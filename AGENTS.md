@@ -21,8 +21,8 @@ These instructions extend the ShiftLeftCyber security coding rules.
 Before presenting or committing workflow changes:
 
 1. Run `actionlint` over `.github/workflows`.
-2. Run `shellcheck` over shell scripts and extracted workflow shell blocks when supported.
-3. Review all `permissions` blocks.
-4. Confirm external actions remain pinned to full commit SHAs.
-5. Confirm no secret or sensitive value is written to logs, artifacts, caches, or summaries.
-
+2. Run Zizmor with the regular persona and resolve every reported finding.
+3. Run `shellcheck` over shell scripts and extracted workflow shell blocks when supported.
+4. Review all `permissions` blocks.
+5. Confirm external actions remain pinned to full commit SHAs.
+6. Confirm no secret or sensitive value is written to logs, artifacts, caches, or summaries.
