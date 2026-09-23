@@ -1,0 +1,238 @@
+name: Build, Attest, and Sign Container
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: Google Artifact Registry hostname, without a scheme or path.
+        required: true
+        type: string
+      image-name:
+        description: Image path below the registry, without a tag or digest.
+        required: true
+        type: string
+      tags:
+        description: Newline-delimited, fully qualified immutable and convenience tags to publish.
+        required: true
+        type: string
+      context:
+        description: Docker build context relative to the repository root.
+        required: false
+        type: string
+        default: .
+      dockerfile:
+        description: Dockerfile path relative to the repository root.
+        required: false
+        type: string
+        default: Dockerfile
+      platforms:
+        description: Comma-delimited target platforms.
+        required: false
+        type: string
+        default: linux/amd64
+      build-args:
+        description: Newline-delimited non-secret Docker build arguments.
+        required: false
+        type: string
+        default: ''
+      workload-identity-provider:
+        description: Full Google Workload Identity Provider resource name.
+        required: true
+        type: string
+      service-account:
+        description: Google service-account email used through Workload Identity Federation.
+        required: true
+        type: string
+      provenance-enabled:
+        description: Generate GitHub SLSA build provenance.
+        required: false
+        type: boolean
+        default: true
+      push-provenance-to-registry:
+        description: Also publish the provenance to the OCI registry.
+        required: false
+        type: boolean
+        default: false
+      cosign-enabled:
+        description: Sign and immediately verify the image using keyless Cosign.
+        required: false
+        type: boolean
+        default: true
+      certificate-identity-regexp:
+        description: Optional Cosign certificate identity policy. Defaults to trusted refs in the caller repository.
+        required: false
+        type: string
+        default: ''
+    outputs:
+      image-digest:
+        description: OCI digest returned by the registry.
+        value: ${{ jobs.build.outputs.image-digest }}
+      image-ref:
+        description: Digest-qualified OCI image reference.
+        value: ${{ jobs.build.outputs.image-ref }}
+      attestation-id:
+        description: GitHub artifact attestation identifier when provenance is enabled.
+        value: ${{ jobs.build.outputs.attestation-id }}
+      attestation-url:
+        description: GitHub artifact attestation URL when provenance is enabled.
+        value: ${{ jobs.build.outputs.attestation-url }}
+
+permissions: read-all
+
+jobs:
+  build:
+    name: Build trusted container
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-ref: ${{ steps.metadata.outputs.subject-name }}@${{ steps.build.outputs.digest }}
+      attestation-id: ${{ steps.attest.outputs.attestation-id }}
+      attestation-url: ${{ steps.attest.outputs.attestation-url }}
+    steps:
+      - name: Validate inputs
+        id: metadata
+        shell: bash
+        env:
+          BUILD_CONTEXT: ${{ inputs.context }}
+          CERTIFICATE_IDENTITY_REGEXP: ${{ inputs.certificate-identity-regexp }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+          IMAGE_TAGS: ${{ inputs.tags }}
+          REGISTRY: ${{ inputs.registry }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${REGISTRY}" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]]; then
+            echo "Registry must be a hostname without a scheme or path."
+            exit 1
+          fi
+
+          if [[ ! "${IMAGE_NAME}" =~ ^[a-z0-9][a-z0-9._/-]*[a-z0-9]$ ]] \
+            || [[ "${IMAGE_NAME}" == *//* ]] \
+            || [[ "${IMAGE_NAME}" == *:* ]] \
+            || [[ "${IMAGE_NAME}" == *@* ]]; then
+            echo "Image name is invalid or contains a tag or digest."
+            exit 1
+          fi
+
+          for candidate in "${BUILD_CONTEXT}" "${DOCKERFILE}"; do
+            if [[ ! "${candidate}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+              || [[ "${candidate}" == /* ]] \
+              || [[ "${candidate}" == *".."* ]] \
+              || [[ "${candidate}" == *//* ]]; then
+              echo "Build context and Dockerfile must be safe repository-relative paths."
+              exit 1
+            fi
+          done
+
+          subject_name="${REGISTRY}/${IMAGE_NAME}"
+          found_tag=false
+          while IFS= read -r tag; do
+            [[ -z "${tag}" ]] && continue
+            found_tag=true
+            if [[ "${tag}" != "${subject_name}:"* ]] \
+              || [[ "${tag}" == *@* ]] \
+              || [[ ! "${tag}" =~ ^[a-z0-9][a-z0-9.:/_-]+$ ]]; then
+              echo "Every tag must start with ${subject_name}: and must not contain a digest."
+              exit 1
+            fi
+          done <<< "${IMAGE_TAGS}"
+
+          if [[ "${found_tag}" != "true" ]]; then
+            echo "At least one image tag is required."
+            exit 1
+          fi
+
+          if [[ -z "${CERTIFICATE_IDENTITY_REGEXP}" ]]; then
+            CERTIFICATE_IDENTITY_REGEXP="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/.+@refs/(heads|tags)/.+$"
+          fi
+
+          {
+            echo "subject-name=${subject_name}"
+            echo "certificate-identity-regexp=${CERTIFICATE_IDENTITY_REGEXP}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        id: google-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          create_credentials_file: false
+          token_format: access_token
+          workload_identity_provider: ${{ inputs.workload-identity-provider }}
+          service_account: ${{ inputs.service-account }}
+
+      - name: Authenticate Docker to Artifact Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: oauth2accesstoken
+          password: ${{ steps.google-auth.outputs.access_token }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          tags: ${{ inputs.tags }}
+          push: true
+          provenance: false
+
+      - name: Generate SLSA build provenance
+        id: attest
+        if: inputs.provenance-enabled
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ steps.metadata.outputs.subject-name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: ${{ inputs.push-provenance-to-registry }}
+          create-storage-record: false
+
+      - name: Install Cosign
+        if: inputs.cosign-enabled
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: Sign and verify image
+        if: inputs.cosign-enabled
+        shell: bash
+        env:
+          CERTIFICATE_IDENTITY_REGEXP: ${{ steps.metadata.outputs.certificate-identity-regexp }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          SUBJECT_NAME: ${{ steps.metadata.outputs.subject-name }}
+        run: |
+          set -euo pipefail
+          image_ref="${SUBJECT_NAME}@${IMAGE_DIGEST}"
+
+          cosign sign --yes "${image_ref}"
+          cosign verify \
+            --certificate-identity-regexp "${CERTIFICATE_IDENTITY_REGEXP}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${image_ref}"
+
+      - name: Add build summary
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          SUBJECT_NAME: ${{ steps.metadata.outputs.subject-name }}
+        run: |
+          {
+            echo "### Trusted container build"
+            echo "- Image: \`${SUBJECT_NAME}@${IMAGE_DIGEST}\`"
+            echo "- SLSA provenance: \`${{ inputs.provenance-enabled }}\`"
+            echo "- Cosign signature: \`${{ inputs.cosign-enabled }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

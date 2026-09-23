@@ -1,0 +1,91 @@
+name: Validate Terraform
+
+on:
+  workflow_call:
+    inputs:
+      directories-json:
+        description: JSON array of repository-relative Terraform directories.
+        required: true
+        type: string
+      terraform-version:
+        description: Exact Terraform version.
+        required: true
+        type: string
+
+permissions: read-all
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.directory }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        directory: ${{ fromJSON(inputs.directories-json) }}
+    steps:
+      - name: Validate workflow inputs
+        shell: bash
+        env:
+          DIRECTORY: ${{ matrix.directory }}
+          TERRAFORM_VERSION: ${{ inputs.terraform-version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${DIRECTORY}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+            || [[ "${DIRECTORY}" == /* ]] \
+            || [[ "${DIRECTORY}" == *".."* ]] \
+            || [[ "${DIRECTORY}" == *//* ]]; then
+            echo "Terraform directory must be a safe repository-relative path."
+            exit 1
+          fi
+          if [[ ! "${TERRAFORM_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Terraform version must be an exact semantic version."
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Confirm Terraform directory exists
+        shell: bash
+        env:
+          DIRECTORY: ${{ matrix.directory }}
+        run: |
+          set -euo pipefail
+          if [[ ! -d "${DIRECTORY}" ]]; then
+            echo "Terraform directory does not exist: ${DIRECTORY}"
+            exit 1
+          fi
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Create provider cache
+        shell: bash
+        run: mkdir -p "${RUNNER_TEMP}/terraform-plugin-cache"
+
+      - name: Cache Terraform providers
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/terraform-plugin-cache
+          key: terraform-${{ runner.os }}-${{ inputs.terraform-version }}-${{ hashFiles(format('{0}/.terraform.lock.hcl', matrix.directory)) }}
+          restore-keys: |
+            terraform-${{ runner.os }}-${{ inputs.terraform-version }}-
+
+      - name: Format, initialize, and validate
+        shell: bash
+        env:
+          DIRECTORY: ${{ matrix.directory }}
+          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/terraform-plugin-cache
+        run: |
+          set -euo pipefail
+          terraform -chdir="${DIRECTORY}" fmt -check -recursive -no-color
+          terraform -chdir="${DIRECTORY}" init -backend=false -input=false -no-color
+          terraform -chdir="${DIRECTORY}" validate -no-color

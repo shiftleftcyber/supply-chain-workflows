@@ -1,0 +1,83 @@
+name: Lint Go
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Go module directory relative to the repository root.
+        required: false
+        type: string
+        default: .
+      go-version-file:
+        description: Path to go.mod relative to the repository root.
+        required: false
+        type: string
+        default: go.mod
+      golangci-lint-version:
+        description: Exact golangci-lint version.
+        required: false
+        type: string
+        default: v2.13.2
+      goexperiment:
+        description: Optional GOEXPERIMENT value required by the module.
+        required: false
+        type: string
+        default: ''
+
+permissions: read-all
+
+jobs:
+  lint:
+    name: Go lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          GO_VERSION_FILE: ${{ inputs.go-version-file }}
+          GOLANGCI_LINT_VERSION: ${{ inputs.golangci-lint-version }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          for candidate in "${GO_VERSION_FILE}" "${WORKING_DIRECTORY}"; do
+            if [[ ! "${candidate}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+              || [[ "${candidate}" == /* ]] \
+              || [[ "${candidate}" == *".."* ]] \
+              || [[ "${candidate}" == *//* ]]; then
+              echo "Paths must be safe repository-relative paths."
+              exit 1
+            fi
+          done
+          if [[ ! "${GOLANGCI_LINT_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "golangci-lint version must be exact and start with v."
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: ${{ inputs.go-version-file }}
+          cache: true
+
+      - name: Download Go modules
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          go mod download
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ inputs.golangci-lint-version }}
+          working-directory: ${{ inputs.working-directory }}
+        env:
+          GOEXPERIMENT: ${{ inputs.goexperiment }}

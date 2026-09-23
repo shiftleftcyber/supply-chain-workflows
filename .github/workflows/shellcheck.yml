@@ -1,0 +1,66 @@
+name: Lint Shell
+
+on:
+  workflow_call:
+    inputs:
+      scan-directory:
+        description: Directory to scan relative to the repository root.
+        required: false
+        type: string
+        default: .
+      severity:
+        description: ShellCheck minimum severity (error, warning, info, or style).
+        required: false
+        type: string
+        default: warning
+
+permissions: read-all
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          SCAN_DIRECTORY: ${{ inputs.scan-directory }}
+          SEVERITY: ${{ inputs.severity }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${SCAN_DIRECTORY}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+            || [[ "${SCAN_DIRECTORY}" == /* ]] \
+            || [[ "${SCAN_DIRECTORY}" == *".."* ]] \
+            || [[ "${SCAN_DIRECTORY}" == *//* ]]; then
+            echo "Scan directory must be a safe repository-relative path."
+            exit 1
+          fi
+          case "${SEVERITY}" in
+            error|warning|info|style) ;;
+            *) echo "Invalid ShellCheck severity: ${SEVERITY}"; exit 1 ;;
+          esac
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Confirm scan directory exists
+        shell: bash
+        env:
+          SCAN_DIRECTORY: ${{ inputs.scan-directory }}
+        run: |
+          set -euo pipefail
+          if [[ ! -d "${SCAN_DIRECTORY}" ]]; then
+            echo "Scan directory does not exist: ${SCAN_DIRECTORY}"
+            exit 1
+          fi
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # v2.0.0
+        with:
+          scandir: ${{ inputs.scan-directory }}
+          severity: ${{ inputs.severity }}

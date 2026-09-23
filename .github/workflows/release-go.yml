@@ -1,0 +1,115 @@
+name: Release and Attest Go Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      go-version-file:
+        description: Path to go.mod relative to the repository root.
+        required: false
+        type: string
+        default: go.mod
+      working-directory:
+        description: GoReleaser working directory relative to the repository root.
+        required: false
+        type: string
+        default: .
+      config:
+        description: GoReleaser configuration path relative to the working directory.
+        required: false
+        type: string
+        default: .goreleaser.yaml
+      checksum-file:
+        description: GoReleaser checksum file relative to the working directory.
+        required: false
+        type: string
+        default: dist/checksums.txt
+
+permissions: read-all
+
+jobs:
+  release:
+    name: Publish Go release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Validate inputs and tag
+        shell: bash
+        env:
+          CHECKSUM_FILE: ${{ inputs.checksum-file }}
+          CONFIG: ${{ inputs.config }}
+          GO_VERSION_FILE: ${{ inputs.go-version-file }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+
+          for candidate in "${CHECKSUM_FILE}" "${CONFIG}" "${GO_VERSION_FILE}" "${WORKING_DIRECTORY}"; do
+            if [[ ! "${candidate}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+              || [[ "${candidate}" == /* ]] \
+              || [[ "${candidate}" == *".."* ]] \
+              || [[ "${candidate}" == *//* ]]; then
+              echo "All paths must be safe repository-relative paths."
+              exit 1
+            fi
+          done
+
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be SemVer-compatible and start with v."
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: ${{ inputs.go-version-file }}
+          cache: true
+
+      - name: Publish release with GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: v2.18.2
+          args: release --clean --config ${{ inputs.config }}
+          workdir: ${{ inputs.working-directory }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Confirm checksum manifest exists
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          CHECKSUM_FILE: ${{ inputs.checksum-file }}
+        run: |
+          set -euo pipefail
+          if [[ ! -s "${CHECKSUM_FILE}" ]]; then
+            echo "GoReleaser did not produce the expected checksum manifest: ${CHECKSUM_FILE}"
+            exit 1
+          fi
+
+      - name: Generate build provenance for release artifacts
+        id: attest
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-checksums: ${{ inputs.working-directory }}/${{ inputs.checksum-file }}
+
+      - name: Add release summary
+        shell: bash
+        env:
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: |
+          {
+            echo "### Go release published and attested"
+            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+            echo "- Attestation: ${ATTESTATION_URL}"
+          } >> "${GITHUB_STEP_SUMMARY}"
