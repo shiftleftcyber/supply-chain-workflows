@@ -241,10 +241,14 @@ jobs:
 
       - name: Add SBOM summary
         shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          CONTAINER_SIGNED: ${{ steps.files.outputs.container-signed }}
+          SOURCE_SIGNED: ${{ steps.files.outputs.source-signed }}
         run: |
           {
             echo "### SBOM evidence generated"
-            echo "- Source SBOM: \`${{ steps.files.outputs.source-signed }}\`"
-            echo "- Container SBOM: \`${{ steps.files.outputs.container-signed }}\`"
-            echo "- Artifact: \`${{ inputs.artifact-name }}\`"
+            echo "- Source SBOM: \`${SOURCE_SIGNED}\`"
+            echo "- Container SBOM: \`${CONTAINER_SIGNED}\`"
+            echo "- Artifact: \`${ARTIFACT_NAME}\`"
           } >> "${GITHUB_STEP_SUMMARY}"

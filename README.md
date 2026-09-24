@@ -58,5 +58,6 @@ Workflow changes affect every repository that adopts them. Pull requests must in
 
 1. A security-impact description.
 2. Validation with `actionlint` and `shellcheck`.
-3. Review of permissions, input validation, action pinning, and secret exposure.
-4. A versioned release after merge when callers should adopt the change.
+3. A clean, blocking Zizmor security scan.
+4. Review of permissions, input validation, action pinning, and secret exposure.
+5. A versioned release after merge when callers should adopt the change.

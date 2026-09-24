@@ -34,6 +34,10 @@ build platform.
 | Denial of service | Unbounded builds or invalid paths consume runner capacity. | Validate inputs, set timeouts, constrain paths, and rely on caller concurrency policies. |
 | Elevation of privilege | Pull-request code gains a write token or cloud credential. | Privileged workflows must be called only from trusted refs; job-level permissions and cloud trust policies enforce this independently. |
 
+Workflow changes are statically analyzed by both `actionlint` and Zizmor. Zizmor runs in blocking console mode with
+the regular persona, online audits, and no severity suppression. Any reported actionable finding fails the pull-request
+check.
+
 ## Known limitations
 
 - A reusable workflow cannot compensate for a caller that grants credentials to untrusted triggers.
@@ -49,4 +53,3 @@ build platform.
 
 Signing, attestation, and verification errors are terminal. Optional features are disabled only through explicit boolean
 inputs. No workflow converts a failed security control into a successful result.
-

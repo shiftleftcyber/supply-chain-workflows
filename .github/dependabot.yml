@@ -4,6 +4,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       github-actions-minor-patch:
         update-types:
@@ -12,4 +14,3 @@ updates:
     labels:
       - dependencies
       - github-actions
-
