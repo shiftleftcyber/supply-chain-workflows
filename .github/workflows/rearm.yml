@@ -1,0 +1,167 @@
+name: Generate and Publish ReARM Evidence
+
+on:
+  workflow_call:
+    inputs:
+      rearm-api-url:
+        description: ReARM API URL.
+        required: true
+        type: string
+      component-id:
+        description: ReARM component identifier.
+        required: true
+        type: string
+      deliverable-name:
+        description: Stable name for the file deliverable recorded by ReARM.
+        required: true
+        type: string
+      project-version:
+        description: Explicit release or build version.
+        required: true
+        type: string
+      secure-sbom-api-url:
+        description: SecureSBOM API base URL.
+        required: true
+        type: string
+      secure-sbom-signing-key-id:
+        description: SecureSBOM signing key identifier.
+        required: true
+        type: string
+      artifact-name:
+        description: Artifact name for generated ReARM evidence.
+        required: false
+        type: string
+        default: rearm-signed-sbom
+    secrets:
+      rearm-api-id:
+        description: ReARM component API ID.
+        required: true
+      rearm-api-key:
+        description: ReARM component API key.
+        required: true
+      secure-sbom-api-key:
+        description: SecureSBOM API key.
+        required: true
+
+permissions: read-all
+
+jobs:
+  evidence:
+    name: Generate, sign, and publish ReARM evidence
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          COMPONENT_ID: ${{ inputs.component-id }}
+          DELIVERABLE_NAME: ${{ inputs.deliverable-name }}
+          PROJECT_VERSION: ${{ inputs.project-version }}
+          REARM_API_URL: ${{ inputs.rearm-api-url }}
+          SECURE_SBOM_API_URL: ${{ inputs.secure-sbom-api-url }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] \
+            || [[ ! "${COMPONENT_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] \
+            || [[ ! "${DELIVERABLE_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$ ]] \
+            || [[ ! "${PROJECT_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,99}$ ]]; then
+            echo "ReARM identifiers are invalid."
+            exit 1
+          fi
+          for endpoint in "${REARM_API_URL}" "${SECURE_SBOM_API_URL}"; do
+            if [[ ! "${endpoint}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$ ]]; then
+              echo "API endpoints must be HTTPS URLs without query strings."
+              exit 1
+            fi
+          done
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Set up ReARM CLI
+        uses: relizaio/rearm-actions/setup-cli@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+
+      - name: Calculate source digest
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_digest="$(git archive HEAD | sha256sum | cut -d ' ' -f 1)"
+          if [[ ! "${source_digest}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Could not calculate the source archive digest."
+            exit 1
+          fi
+          echo "digest=sha256:${source_digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Initialize ReARM flow
+        id: initialize
+        uses: relizaio/rearm-actions/initialize@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+        with:
+          allow_rebuild: true
+          component: ${{ inputs.component-id }}
+          rearm_api_id: ${{ secrets.rearm-api-id }}
+          rearm_api_key: ${{ secrets.rearm-api-key }}
+          rearm_api_url: ${{ inputs.rearm-api-url }}
+          version: ${{ inputs.project-version }}
+
+      - name: Generate and sign SBOM
+        id: sbom
+        uses: relizaio/rearm-actions/sbom-sign-scan@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+        with:
+          deliverable_type: FILE
+          enable_sbom: true
+          enable_securesbom: true
+          image_full_name: ${{ inputs.deliverable-name }}
+          image_digest: ${{ steps.source.outputs.digest }}
+          rearm_full_version: ${{ inputs.project-version }}
+          rearm_short_version: ${{ inputs.project-version }}
+          securesbom_api_key: ${{ secrets.secure-sbom-api-key }}
+          securesbom_host: ${{ inputs.secure-sbom-api-url }}
+          securesbom_pub_key_id: ${{ inputs.secure-sbom-signing-key-id }}
+          source_code_sbom_type: custom
+
+      - name: Confirm generated evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s fs.cdx.bom.json ]]; then
+            echo "ReARM did not generate the expected SBOM."
+            exit 1
+          fi
+
+      - name: Upload ReARM evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          if-no-files-found: error
+          retention-days: 30
+          path: fs.cdx.bom.json
+
+      - name: Finalize ReARM flow
+        uses: relizaio/rearm-actions/finalize@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+        with:
+          commit_list: ${{ steps.initialize.outputs.commit_list }}
+          component: ${{ inputs.component-id }}
+          deliverable_type: FILE
+          image_full_name: ${{ inputs.deliverable-name }}
+          image_digest: ${{ steps.source.outputs.digest }}
+          rearm_api_id: ${{ secrets.rearm-api-id }}
+          rearm_api_key: ${{ secrets.rearm-api-key }}
+          rearm_api_url: ${{ inputs.rearm-api-url }}
+          rearm_build_lifecycle: ASSEMBLED
+          rearm_build_start: ${{ steps.initialize.outputs.build_start }}
+          rearm_full_version: ${{ inputs.project-version }}
+          rearm_short_version: ${{ inputs.project-version }}
+          sce_commit: ${{ steps.initialize.outputs.sce_commit }}
+          sce_commit_date: ${{ steps.initialize.outputs.sce_commit_date }}
+          sce_commit_message: ${{ steps.initialize.outputs.sce_commit_message }}
+          sce_vcs_uri: ${{ steps.initialize.outputs.sce_vcs_uri }}
+          scearts: ${{ steps.sbom.outputs.scearts }}

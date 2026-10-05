@@ -1,11 +1,7 @@
-name: Validate Shared Workflows
+name: Validate GitHub Actions
 
 on:
-  workflow_dispatch:
-  pull_request:
-  push:
-    branches:
-      - main
+  workflow_call:
 
 permissions: read-all
 
@@ -22,15 +18,30 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Enforce shared workflow policy
+      - name: Enforce immutable action references and narrow authority
         shell: bash
-        run: .github/scripts/check-workflow-policy.sh
-
-      - name: ShellCheck policy scripts
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          scandir: .github/scripts
-          severity: warning
+        run: |
+          set -euo pipefail
+          failed=false
+          while IFS= read -r workflow; do
+            while IFS= read -r use_line; do
+              reference="${use_line#*uses:}"
+              reference="${reference%%#*}"
+              reference="${reference//\"/}"
+              reference="${reference//\'/}"
+              reference="${reference//[[:space:]]/}"
+              [[ "${reference}" == ./* ]] && continue
+              if [[ ! "${reference}" =~ @([a-f0-9]{40})$ ]]; then
+                echo "Unpinned external action in ${workflow}: ${reference}"
+                failed=true
+              fi
+            done < <(grep -E '^[[:space:]]*(-[[:space:]]*)?uses:' "${workflow}" || true)
+          done < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print)
+          if grep -R -n -E 'secrets:[[:space:]]*inherit|permissions:[[:space:]]*write-all' .github/workflows; then
+            echo "Forbidden broad secret or permission configuration found."
+            failed=true
+          fi
+          [[ "${failed}" == "false" ]]
 
   actionlint:
     name: actionlint
@@ -48,7 +59,7 @@ jobs:
         uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
 
   zizmor:
-    name: zizmor security scan
+    name: zizmor
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -59,7 +70,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Scan GitHub Actions security
+      - name: Scan workflow security
         uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         with:
           advanced-security: false

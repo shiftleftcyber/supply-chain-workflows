@@ -22,6 +22,9 @@ build platform.
 4. Google Workload Identity Federation and Artifact Registry.
 5. External actions and downloaded tools pinned by version and digest.
 6. SecureSBOM and Sigstore services used for signing or verification.
+7. Token-authenticated OCI registries used by the registry-neutral container workflow.
+8. Interlynk, Sbomify, and ReARM endpoints that receive explicitly selected evidence.
+9. npm and PyPI packages installed by the Node SBOM and Interlynk publishing workflows.
 
 ## STRIDE analysis
 
@@ -33,6 +36,8 @@ build platform.
 | Information disclosure | A cloud credential or API key appears in logs or artifacts. | Use OIDC, named secrets, minimal output, and no environment dumps or inherited secrets. |
 | Denial of service | Unbounded builds or invalid paths consume runner capacity. | Validate inputs, set timeouts, constrain paths, and rely on caller concurrency policies. |
 | Elevation of privilege | Pull-request code gains a write token or cloud credential. | Privileged workflows must be called only from trusted refs; job-level permissions and cloud trust policies enforce this independently. |
+| Supply-chain compromise | A build tool, package, or action is replaced upstream. | Pin actions and images immutably, pin tool versions, centralize review, and fail when reviewed source tags resolve unexpectedly. |
+| Confused deputy | A caller publishes the wrong artifact or targets an attacker-controlled service. | Validate artifact names, identifiers, HTTPS endpoints, image digests, and registry ownership before privileged operations. |
 
 Workflow changes are statically analyzed by both `actionlint` and Zizmor. Zizmor runs in blocking console mode with
 the regular persona, online audits, and no severity suppression. Any reported actionable finding fails the pull-request
@@ -48,6 +53,13 @@ check.
 - GitHub artifact attestations for private repositories depend on organization plan availability.
 - Callers pinned to an older commit do not automatically receive fixes. Automated update pull requests and prompt
   security advisories are required.
+- The Interlynk client currently installs its pinned source tree's Python requirements without a lock file containing
+  hashes. That workflow should be enabled only when Interlynk publication is required, and the dependency set must be
+  reviewed whenever the pinned client commit changes.
+- The Node SBOM workflow installs an exact cdxgen version from npm. Registry compromise remains a residual risk until a
+  reviewed digest-pinned distribution is available.
+- Token-authenticated registries do not provide OIDC federation in every configuration. Callers must provide a scoped,
+  short-lived token when the registry supports one and must never expose the token to pull-request jobs.
 
 ## Secure failure
 

@@ -1,0 +1,108 @@
+name: Publish SBOM to Interlynk
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Workflow artifact containing the signed SBOM.
+        required: true
+        type: string
+      sbom-file:
+        description: Signed SBOM filename inside the artifact.
+        required: true
+        type: string
+      product:
+        description: Existing Interlynk product identifier.
+        required: true
+        type: string
+      environment:
+        description: Existing Interlynk environment name.
+        required: true
+        type: string
+    secrets:
+      interlynk-security-token:
+        description: Interlynk API token.
+        required: true
+
+permissions: read-all
+
+jobs:
+  publish:
+    name: Publish signed SBOM
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          INTERLYNK_ENVIRONMENT: ${{ inputs.environment }}
+          PRODUCT: ${{ inputs.product }}
+          SBOM_FILE: ${{ inputs.sbom-file }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] \
+            || [[ ! "${SBOM_FILE}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}[.]json$ ]] \
+            || [[ ! "${PRODUCT}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] \
+            || [[ ! "${INTERLYNK_ENVIRONMENT}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+            echo "One or more publication inputs are invalid."
+            exit 1
+          fi
+
+      - name: Download signed SBOM
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: evidence
+
+      - name: Confirm signed SBOM exists
+        shell: bash
+        env:
+          SBOM_FILE: ${{ inputs.sbom-file }}
+        run: |
+          set -euo pipefail
+          if [[ ! -s "evidence/${SBOM_FILE}" ]]; then
+            echo "Expected signed SBOM is missing."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.11'
+
+      - name: Fetch reviewed pylynk source
+        shell: bash
+        env:
+          PYLYNK_COMMIT: c720aef769d65e01f70a50846fefffd329b8e4dd
+          PYLYNK_VERSION: v1.2.6
+        run: |
+          set -euo pipefail
+          git init pylynk
+          git -C pylynk remote add origin https://github.com/interlynk-io/pylynk.git
+          git -C pylynk fetch --depth=1 origin "refs/tags/${PYLYNK_VERSION}:refs/tags/${PYLYNK_VERSION}"
+          resolved_commit="$(git -C pylynk rev-list -n 1 "${PYLYNK_VERSION}")"
+          if [[ "${resolved_commit}" != "${PYLYNK_COMMIT}" ]]; then
+            echo "The pylynk tag did not resolve to the reviewed commit."
+            exit 1
+          fi
+          git -C pylynk checkout --detach "${PYLYNK_COMMIT}"
+          pip install --disable-pip-version-check -r pylynk/requirements.txt
+
+      - name: Publish signed SBOM
+        shell: bash
+        env:
+          INTERLYNK_ENVIRONMENT: ${{ inputs.environment }}
+          INTERLYNK_SECURITY_TOKEN: ${{ secrets.interlynk-security-token }}
+          PRODUCT: ${{ inputs.product }}
+          SBOM_FILE: ${{ github.workspace }}/evidence/${{ inputs.sbom-file }}
+        run: |
+          set -euo pipefail
+          python3 pylynk/pylynk.py upload \
+            --prod "${PRODUCT}" \
+            --env "${INTERLYNK_ENVIRONMENT}" \
+            --sbom "${SBOM_FILE}"
