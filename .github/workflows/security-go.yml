@@ -1,0 +1,119 @@
+name: Go Security
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Go module directory relative to the repository root.
+        required: false
+        type: string
+        default: .
+      go-version-file:
+        description: Path to go.mod relative to the repository root.
+        required: false
+        type: string
+        default: go.mod
+      goexperiment:
+        description: Optional GOEXPERIMENT value required by the module.
+        required: false
+        type: string
+        default: ''
+      run-dependency-review:
+        description: Run dependency review when called from a pull request.
+        required: false
+        type: boolean
+        default: true
+      run-codeql:
+        description: Run CodeQL analysis.
+        required: false
+        type: boolean
+        default: true
+
+permissions: read-all
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Validate paths
+        shell: bash
+        env:
+          GO_VERSION_FILE: ${{ inputs.go-version-file }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          for candidate in "${GO_VERSION_FILE}" "${WORKING_DIRECTORY}"; do
+            if [[ ! "${candidate}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+              || [[ "${candidate}" == /* ]] \
+              || [[ "${candidate}" == *".."* ]] \
+              || [[ "${candidate}" == *//* ]]; then
+              echo "Paths must be safe repository-relative paths."
+              exit 1
+            fi
+          done
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: ${{ inputs.go-version-file }}
+          cache: true
+
+      - name: Install govulncheck
+        shell: bash
+        env:
+          GOBIN: ${{ runner.temp }}/govulncheck-bin
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+
+      - name: Run govulncheck
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GOEXPERIMENT: ${{ inputs.goexperiment }}
+          GOVULNCHECK: ${{ runner.temp }}/govulncheck-bin/govulncheck
+        run: |
+          set -euo pipefail
+          "${GOVULNCHECK}" ./...
+
+  dependency-review:
+    name: Dependency review
+    if: inputs.run-dependency-review && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
+  codeql:
+    name: CodeQL
+    if: inputs.run-codeql
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+        with:
+          languages: go
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2

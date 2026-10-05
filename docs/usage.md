@@ -3,6 +3,61 @@
 Always replace `FULL_COMMIT_SHA` with a reviewed commit from this repository. The calling workflow must grant every
 permission requested by the called workflow; permissions cannot be elevated through a reusable workflow.
 
+## Validate caller workflows
+
+```yaml
+jobs:
+  actions-policy:
+    permissions:
+      contents: read
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/validate-actions.yml@FULL_COMMIT_SHA
+```
+
+This checks workflow syntax and security posture and rejects mutable external action references, `write-all`, and
+`secrets: inherit`.
+
+## Test a Go module
+
+```yaml
+jobs:
+  go-ci:
+    permissions:
+      contents: read
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/go-ci.yml@FULL_COMMIT_SHA
+    with:
+      working-directory: api
+      go-version-file: api/go.mod
+      goexperiment: jsonv2
+
+  go-security:
+    permissions:
+      contents: read
+      security-events: write
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/security-go.yml@FULL_COMMIT_SHA
+    with:
+      working-directory: api
+      go-version-file: api/go.mod
+```
+
+## Generate a source-only Go SBOM
+
+```yaml
+jobs:
+  source-sbom:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/source-sbom-go.yml@FULL_COMMIT_SHA
+    with:
+      file-prefix: example-${{ github.sha }}
+      secure-sbom-signing-key-id: ${{ vars.SECURE_SBOM_SIGNING_KEY_ID }}
+    secrets:
+      secure-sbom-api-key: ${{ secrets.SECURE_SBOM_API_KEY }}
+```
+
+Publication should be a separate dependent job that receives the exact artifact and only the destination-specific
+secret. Do not pass all repository secrets to an SBOM workflow.
+
 ## Build, attest, and sign a GAR image
 
 ```yaml

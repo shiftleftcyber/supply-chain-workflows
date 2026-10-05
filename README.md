@@ -10,15 +10,31 @@ arbitrary shell commands or inheriting all caller secrets.
 | Workflow | Purpose |
 |---|---|
 | `build-container-gar.yml` | Build and push an OCI image to Google Artifact Registry, generate SLSA build provenance, and optionally sign it with Cosign. |
+| `build-container-registry.yml` | Build, attest, and sign an image for GHCR or another token-authenticated OCI registry. |
+| `container-sbom.yml` | Generate, sign, and verify an SBOM for a digest-qualified container image. |
+| `go-ci.yml` | Format, vet, test, build, and optionally smoke-test a Go container. |
 | `verify-container.yml` | Verify GitHub build provenance and an optional Cosign keyless signature for a digest-qualified OCI image. |
 | `release-go.yml` | Build and publish a tagged Go release with GoReleaser, then attest the published checksums. |
+| `release-github-action.yml` | Publish a GitHub Action release and optionally update its major compatibility tag. |
 | `sbom-lifecycle.yml` | Generate source and container CycloneDX SBOMs, sign and verify them with SecureSBOM, and publish them as a workflow artifact. |
+| `source-sbom-go.yml` | Generate, sign, verify, and vulnerability-scan a Go source SBOM without requiring a container registry. |
+| `source-sbom-node.yml` | Generate, sign, and verify a Node source SBOM. |
+| `publish-sbom-interlynk.yml` | Publish one named signed SBOM artifact to Interlynk. |
+| `publish-sbom-sbomify.yml` | Publish one named signed SBOM artifact to Sbomify. |
+| `rearm.yml` | Generate, sign, and publish evidence through ReARM. |
 | `terraform-validate.yml` | Run formatting, initialization without a backend, and validation over an explicit directory matrix. |
+| `node-ci.yml` | Install, lint, test, and build a Node project with controlled package-manager behavior. |
 | `go-lint.yml` | Run pinned Go linting against a module. |
+| `security-go.yml` | Run govulncheck, dependency review, and CodeQL for a Go module. |
 | `shellcheck.yml` | Run pinned ShellCheck analysis against a selected directory. |
+| `validate-actions.yml` | Run the standard Actionlint and Zizmor policy against a caller repository. |
 
 See [`docs/usage.md`](docs/usage.md) for caller examples and [`docs/threat-model.md`](docs/threat-model.md) for the
 security model and known limitations.
+
+Workflow contracts and removal timelines are documented in [`docs/compatibility.md`](docs/compatibility.md). Not every
+workflow applies to every repository; compose the smallest set needed rather than enabling optional integrations by
+default.
 
 ## Versioning
 

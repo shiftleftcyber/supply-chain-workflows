@@ -1,0 +1,130 @@
+name: Generate and Protect Node Source SBOM
+
+on:
+  workflow_call:
+    inputs:
+      source-directory:
+        description: Node project directory relative to the repository root.
+        required: false
+        type: string
+        default: .
+      node-version:
+        description: Exact Node.js major or semantic version.
+        required: true
+        type: string
+      cdxgen-version:
+        description: Exact @cyclonedx/cdxgen version.
+        required: false
+        type: string
+        default: 12.3.3
+      secure-sbom-signing-key-id:
+        description: SecureSBOM signing-key identifier.
+        required: true
+        type: string
+      file-prefix:
+        description: Safe filename prefix.
+        required: true
+        type: string
+      artifact-name:
+        description: Artifact containing generated SBOM evidence.
+        required: false
+        type: string
+        default: signed-node-sbom
+    secrets:
+      secure-sbom-api-key:
+        description: SecureSBOM API key.
+        required: true
+
+permissions: read-all
+
+jobs:
+  sbom:
+    name: Generate, sign, and verify Node SBOM
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Validate inputs
+        id: files
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          CDXGEN_VERSION: ${{ inputs.cdxgen-version }}
+          FILE_PREFIX: ${{ inputs.file-prefix }}
+          NODE_VERSION: ${{ inputs.node-version }}
+          SOURCE_DIRECTORY: ${{ inputs.source-directory }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${SOURCE_DIRECTORY}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+            || [[ "${SOURCE_DIRECTORY}" == /* ]] \
+            || [[ "${SOURCE_DIRECTORY}" == *".."* ]] \
+            || [[ "${SOURCE_DIRECTORY}" == *//* ]]; then
+            echo "Source directory must be a safe repository-relative path."
+            exit 1
+          fi
+          if [[ ! "${NODE_VERSION}" =~ ^[0-9]+([.][0-9]+([.][0-9]+)?)?$ ]] \
+            || [[ ! "${CDXGEN_VERSION}" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+            echo "Node and cdxgen versions are invalid."
+            exit 1
+          fi
+          for candidate in "${ARTIFACT_NAME}" "${FILE_PREFIX}"; do
+            if [[ ! "${candidate}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+              echo "Artifact and file names must contain only safe characters."
+              exit 1
+            fi
+          done
+          {
+            echo "unsigned=${FILE_PREFIX}.source.cdx.json"
+            echo "signed=${FILE_PREFIX}.source.cdx.signed.json"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Generate Node SBOM
+        shell: bash
+        env:
+          CDXGEN_VERSION: ${{ inputs.cdxgen-version }}
+          OUTPUT_FILE: ${{ github.workspace }}/${{ steps.files.outputs.unsigned }}
+          SOURCE_DIRECTORY: ${{ inputs.source-directory }}
+        run: |
+          set -euo pipefail
+          npx --yes "@cyclonedx/cdxgen@${CDXGEN_VERSION}" \
+            --type js \
+            --output "${OUTPUT_FILE}" \
+            "${SOURCE_DIRECTORY}"
+
+      - name: Sign Node SBOM
+        uses: shiftleftcyber/secure-sbom-action@542dffaadd81bc0614947d749720558a399e6454 # v2.4.0
+        with:
+          sbom_file: ${{ steps.files.outputs.unsigned }}
+          secure_sbom_action: sign_sbom
+          secure_sbom_api_key: ${{ secrets.secure-sbom-api-key }}
+          secure_sbom_signing_key_id: ${{ inputs.secure-sbom-signing-key-id }}
+
+      - name: Verify signed Node SBOM
+        uses: shiftleftcyber/secure-sbom-action@542dffaadd81bc0614947d749720558a399e6454 # v2.4.0
+        with:
+          sbom_file: ${{ steps.files.outputs.signed }}
+          secure_sbom_action: verify_sbom
+          secure_sbom_api_key: ${{ secrets.secure-sbom-api-key }}
+          secure_sbom_signing_key_id: ${{ inputs.secure-sbom-signing-key-id }}
+
+      - name: Upload Node SBOM evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ steps.files.outputs.unsigned }}
+            ${{ steps.files.outputs.signed }}

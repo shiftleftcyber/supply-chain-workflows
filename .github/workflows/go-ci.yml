@@ -1,0 +1,156 @@
+name: Go CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Go module directory relative to the repository root.
+        required: false
+        type: string
+        default: .
+      go-version-file:
+        description: Path to go.mod relative to the repository root.
+        required: false
+        type: string
+        default: go.mod
+      goexperiment:
+        description: Optional GOEXPERIMENT value required by the module.
+        required: false
+        type: string
+        default: ''
+      run-build:
+        description: Build all packages after tests pass.
+        required: false
+        type: boolean
+        default: true
+      run-docker-smoke-test:
+        description: Build, but do not publish, a Docker image.
+        required: false
+        type: boolean
+        default: false
+      docker-context:
+        description: Docker build context relative to the repository root.
+        required: false
+        type: string
+        default: .
+      dockerfile:
+        description: Dockerfile relative to the repository root.
+        required: false
+        type: string
+        default: Dockerfile
+      coverage-artifact-name:
+        description: Artifact name for the Go coverage profile.
+        required: false
+        type: string
+        default: go-coverage
+
+permissions: read-all
+
+jobs:
+  test:
+    name: Format, vet, test, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.coverage-artifact-name }}
+          DOCKER_CONTEXT: ${{ inputs.docker-context }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          GO_VERSION_FILE: ${{ inputs.go-version-file }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          for candidate in "${DOCKER_CONTEXT}" "${DOCKERFILE}" "${GO_VERSION_FILE}" "${WORKING_DIRECTORY}"; do
+            if [[ ! "${candidate}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+              || [[ "${candidate}" == /* ]] \
+              || [[ "${candidate}" == *".."* ]] \
+              || [[ "${candidate}" == *//* ]]; then
+              echo "Paths must be safe repository-relative paths."
+              exit 1
+            fi
+          done
+          if [[ ! "${ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+            echo "Coverage artifact name is invalid."
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: ${{ inputs.go-version-file }}
+          cache: true
+
+      - name: Download modules
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          go mod download
+
+      - name: Check formatting
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [[ -n "${unformatted}" ]]; then
+            echo "The following Go files are not formatted:"
+            printf '%s\n' "${unformatted}"
+            exit 1
+          fi
+
+      - name: Vet
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GOEXPERIMENT: ${{ inputs.goexperiment }}
+        run: |
+          set -euo pipefail
+          go vet ./...
+
+      - name: Test with coverage
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GOEXPERIMENT: ${{ inputs.goexperiment }}
+        run: |
+          set -euo pipefail
+          go test -race -covermode=atomic -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+
+      - name: Build packages
+        if: inputs.run-build
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GOEXPERIMENT: ${{ inputs.goexperiment }}
+        run: |
+          set -euo pipefail
+          go build ./...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.coverage-artifact-name }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ inputs.working-directory }}/coverage.out
+
+      - name: Docker build smoke test
+        if: inputs.run-docker-smoke-test
+        shell: bash
+        env:
+          DOCKER_CONTEXT: ${{ inputs.docker-context }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+        run: |
+          set -euo pipefail
+          docker build --file "${DOCKERFILE}" --tag "local/ci-smoke:${GITHUB_SHA}" "${DOCKER_CONTEXT}"

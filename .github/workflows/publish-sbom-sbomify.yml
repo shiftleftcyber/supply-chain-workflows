@@ -1,0 +1,70 @@
+name: Publish SBOM to Sbomify
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Workflow artifact containing the signed SBOM.
+        required: true
+        type: string
+      sbom-file:
+        description: Signed SBOM filename inside the artifact.
+        required: true
+        type: string
+      component-id:
+        description: Sbomify component identifier.
+        required: true
+        type: string
+      component-version:
+        description: Version associated with the uploaded SBOM.
+        required: true
+        type: string
+    secrets:
+      sbomify-token:
+        description: Sbomify API token.
+        required: true
+
+permissions: read-all
+
+jobs:
+  publish:
+    name: Publish signed SBOM
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          COMPONENT_ID: ${{ inputs.component-id }}
+          COMPONENT_VERSION: ${{ inputs.component-version }}
+          SBOM_FILE: ${{ inputs.sbom-file }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] \
+            || [[ ! "${SBOM_FILE}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}[.]json$ ]] \
+            || [[ ! "${COMPONENT_ID}" =~ ^[A-Za-z0-9_-]{1,100}$ ]] \
+            || [[ ! "${COMPONENT_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,99}$ ]]; then
+            echo "One or more publication inputs are invalid."
+            exit 1
+          fi
+
+      - name: Download signed SBOM
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: evidence
+
+      - name: Publish to Sbomify
+        uses: sbomify/github-action@ddf6a0d3d75b645153ad1ad60034b3fe2cb1eb63 # v26.7.0
+        env:
+          AUGMENT: false
+          COMPONENT_ID: ${{ inputs.component-id }}
+          COMPONENT_VERSION: ${{ inputs.component-version }}
+          ENRICH: false
+          SBOM_FILE: evidence/${{ inputs.sbom-file }}
+          TOKEN: ${{ secrets.sbomify-token }}

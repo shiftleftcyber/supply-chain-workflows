@@ -1,0 +1,86 @@
+name: Release GitHub Action
+
+on:
+  workflow_call:
+    inputs:
+      release-files:
+        description: Newline-delimited repository-relative release artifact paths. Globs are not accepted.
+        required: false
+        type: string
+        default: ''
+      update-major-tag:
+        description: Move the corresponding vN compatibility tag to this release.
+        required: false
+        type: boolean
+        default: false
+
+permissions: read-all
+
+jobs:
+  release:
+    name: Publish GitHub Action release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Validate release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v([0-9]+)[.]([0-9]+)[.]([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be SemVer-compatible and start with v."
+            exit 1
+          fi
+          echo "major=v${BASH_REMATCH[1]}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out release source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_FILES: ${{ inputs.release-files }}
+        run: |
+          set -euo pipefail
+          files=()
+          while IFS= read -r release_file; do
+            [[ -z "${release_file}" ]] && continue
+            if [[ ! "${release_file}" =~ ^[A-Za-z0-9._/-]+$ ]] \
+              || [[ "${release_file}" == /* ]] \
+              || [[ "${release_file}" == *".."* ]] \
+              || [[ "${release_file}" == *//* ]] \
+              || [[ ! -f "${release_file}" ]]; then
+              echo "Release artifact path is invalid or missing."
+              exit 1
+            fi
+            files+=("${release_file}")
+          done <<< "${RELEASE_FILES}"
+          gh release create "${GITHUB_REF_NAME}" "${files[@]}" --generate-notes --verify-tag
+
+      - name: Move major compatibility tag
+        if: inputs.update-major-tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAJOR_TAG: ${{ steps.tag.outputs.major }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" \
+              -f sha="${GITHUB_SHA}" \
+              -F force=true >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${MAJOR_TAG}" \
+              -f sha="${GITHUB_SHA}" >/dev/null
+          fi
