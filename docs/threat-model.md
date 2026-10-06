@@ -62,6 +62,8 @@ that do not upload results. Callers must grant the same scope; GitHub rejects an
   reviewed whenever the pinned client commit changes.
 - The Node SBOM workflow installs an exact cdxgen version from npm. Registry compromise remains a residual risk until a
   reviewed digest-pinned distribution is available.
+- The Go security workflow permits Go's authenticated automatic toolchain selection only while compiling the pinned
+  govulncheck version. Scanning continues with the caller module's declared Go toolchain.
 - Token-authenticated registries do not provide OIDC federation in every configuration. Callers must provide a scoped,
   short-lived token when the registry supports one and must never expose the token to pull-request jobs.
 

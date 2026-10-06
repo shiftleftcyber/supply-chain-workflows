@@ -75,6 +75,9 @@ jobs:
         shell: bash
         env:
           GOBIN: ${{ runner.temp }}/govulncheck-bin
+          # The pinned scanner can require a newer compiler than the target module.
+          # Limit automatic toolchain selection to scanner installation.
+          GOTOOLCHAIN: auto
         run: |
           set -euo pipefail
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
