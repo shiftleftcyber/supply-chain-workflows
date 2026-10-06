@@ -29,7 +29,11 @@ on:
         type: boolean
         default: true
 
-permissions: read-all
+# Reusable workflows cannot elevate permissions reduced earlier in the call chain.
+# Keep CodeQL's required scope available here; each job narrows it below.
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
   govulncheck:
@@ -71,6 +75,9 @@ jobs:
         shell: bash
         env:
           GOBIN: ${{ runner.temp }}/govulncheck-bin
+          # The pinned scanner can require a newer compiler than the target module.
+          # Limit automatic toolchain selection to scanner installation.
+          GOTOOLCHAIN: auto
         run: |
           set -euo pipefail
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0

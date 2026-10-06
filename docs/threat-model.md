@@ -43,6 +43,10 @@ Workflow changes are statically analyzed by both `actionlint` and Zizmor. Zizmor
 the regular persona, online audits, and no severity suppression. Any reported actionable finding fails the pull-request
 check.
 
+Reusable workflow permissions can only be maintained or reduced across the caller and callee chain. Workflows that
+upload SARIF declare `security-events: write` at the reusable-workflow boundary, then explicitly remove it from jobs
+that do not upload results. Callers must grant the same scope; GitHub rejects an attempted elevation before jobs start.
+
 ## Known limitations
 
 - A reusable workflow cannot compensate for a caller that grants credentials to untrusted triggers.
@@ -58,6 +62,8 @@ check.
   reviewed whenever the pinned client commit changes.
 - The Node SBOM workflow installs an exact cdxgen version from npm. Registry compromise remains a residual risk until a
   reviewed digest-pinned distribution is available.
+- The Go security workflow permits Go's authenticated automatic toolchain selection only while compiling the pinned
+  govulncheck version. Scanning continues with the caller module's declared Go toolchain.
 - Token-authenticated registries do not provide OIDC federation in every configuration. Callers must provide a scoped,
   short-lived token when the registry supports one and must never expose the token to pull-request jobs.
 
