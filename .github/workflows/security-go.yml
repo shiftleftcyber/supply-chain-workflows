@@ -29,7 +29,11 @@ on:
         type: boolean
         default: true
 
-permissions: read-all
+# Reusable workflows cannot elevate permissions reduced earlier in the call chain.
+# Keep CodeQL's required scope available here; each job narrows it below.
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
   govulncheck:

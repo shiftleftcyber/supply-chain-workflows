@@ -43,6 +43,10 @@ Workflow changes are statically analyzed by both `actionlint` and Zizmor. Zizmor
 the regular persona, online audits, and no severity suppression. Any reported actionable finding fails the pull-request
 check.
 
+Reusable workflow permissions can only be maintained or reduced across the caller and callee chain. Workflows that
+upload SARIF declare `security-events: write` at the reusable-workflow boundary, then explicitly remove it from jobs
+that do not upload results. Callers must grant the same scope; GitHub rejects an attempted elevation before jobs start.
+
 ## Known limitations
 
 - A reusable workflow cannot compensate for a caller that grants credentials to untrusted triggers.
