@@ -23,8 +23,28 @@ on:
         required: false
         type: string
         default: dist/checksums.txt
+      evidence-artifact-name:
+        description: Optional workflow artifact containing one file to attach to the GitHub release.
+        required: false
+        type: string
+        default: ''
+      evidence-file:
+        description: Optional filename inside the evidence artifact to attach to the GitHub release.
+        required: false
+        type: string
+        default: ''
+      update-major-tag:
+        description: Move the corresponding vN compatibility tag after the release succeeds.
+        required: false
+        type: boolean
+        default: false
 
-permissions: read-all
+# Preserve the maximum scopes authorized by the caller; the release job
+# explicitly declares the same release-only scopes below.
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
 
 jobs:
   release:
@@ -38,10 +58,13 @@ jobs:
       id-token: write
     steps:
       - name: Validate inputs and tag
+        id: validate
         shell: bash
         env:
           CHECKSUM_FILE: ${{ inputs.checksum-file }}
           CONFIG: ${{ inputs.config }}
+          EVIDENCE_ARTIFACT_NAME: ${{ inputs.evidence-artifact-name }}
+          EVIDENCE_FILE: ${{ inputs.evidence-file }}
           GO_VERSION_FILE: ${{ inputs.go-version-file }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: |
@@ -57,9 +80,18 @@ jobs:
             fi
           done
 
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v([0-9]+)[.]([0-9]+)[.]([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
             echo "Release tag must be SemVer-compatible and start with v."
             exit 1
+          fi
+          echo "major=v${BASH_REMATCH[1]}" >> "${GITHUB_OUTPUT}"
+
+          if [[ -n "${EVIDENCE_ARTIFACT_NAME}" || -n "${EVIDENCE_FILE}" ]]; then
+            if [[ ! "${EVIDENCE_ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] \
+              || [[ ! "${EVIDENCE_FILE}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]]; then
+              echo "Evidence artifact and filename must both be present and contain only safe characters."
+              exit 1
+            fi
           fi
 
       - name: Check out source
@@ -102,6 +134,48 @@ jobs:
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-checksums: ${{ inputs.working-directory }}/${{ inputs.checksum-file }}
+
+      - name: Download release evidence
+        if: inputs.evidence-artifact-name != '' && inputs.evidence-file != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.evidence-artifact-name }}
+          path: ${{ runner.temp }}/release-evidence
+
+      - name: Attach evidence to GitHub release
+        if: inputs.evidence-artifact-name != '' && inputs.evidence-file != ''
+        shell: bash
+        env:
+          EVIDENCE_FILE: ${{ inputs.evidence-file }}
+          EVIDENCE_PATH: ${{ runner.temp }}/release-evidence/${{ inputs.evidence-file }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! -s "${EVIDENCE_PATH}" ]]; then
+            echo "Release evidence is missing or empty: ${EVIDENCE_FILE}"
+            exit 1
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${EVIDENCE_PATH}" --clobber
+
+      - name: Move major compatibility tag
+        if: inputs.update-major-tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAJOR_TAG: ${{ steps.validate.outputs.major }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" \
+              -f sha="${GITHUB_SHA}" \
+              -F force=true >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${MAJOR_TAG}" \
+              -f sha="${GITHUB_SHA}" >/dev/null
+          fi
 
       - name: Add release summary
         shell: bash

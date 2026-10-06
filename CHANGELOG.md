@@ -7,6 +7,9 @@ to its full commit SHA.
 
 ## Unreleased
 
+- Allow Go releases to attach one validated evidence artifact and update the validated major compatibility tag after
+  release publication and provenance generation succeed.
+
 ### Added
 
 - Reusable Go and Node CI workflows.
