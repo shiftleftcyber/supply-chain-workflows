@@ -183,6 +183,7 @@ accept arbitrary setup commands.
 jobs:
   release:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: source-sbom
     permissions:
       attestations: write
       contents: write
@@ -192,8 +193,12 @@ jobs:
       go-version-file: api/go.mod
       working-directory: api
       config: .goreleaser.yaml
+      evidence-artifact-name: ${{ needs.source-sbom.outputs.artifact-name }}
+      evidence-file: ${{ needs.source-sbom.outputs.signed-sbom-file }}
+      update-major-tag: true
 ```
 
 The caller must protect release tags and require human review. The workflow currently publishes through GoReleaser and
-then creates provenance from its checksum manifest. Consumers must verify that provenance before trusting downloaded
-artifacts.
+then creates provenance from its checksum manifest. Optional evidence must be a single named file from a workflow
+artifact produced earlier in the same run. The major compatibility tag moves only after the release, provenance, and
+optional evidence upload succeed. Consumers must verify provenance before trusting downloaded artifacts.

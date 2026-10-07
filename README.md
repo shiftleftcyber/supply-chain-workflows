@@ -14,7 +14,7 @@ arbitrary shell commands or inheriting all caller secrets.
 | `container-sbom.yml` | Generate, sign, and verify an SBOM for a digest-qualified container image. |
 | `go-ci.yml` | Format, vet, test, build, and optionally smoke-test a Go container. |
 | `verify-container.yml` | Verify GitHub build provenance and an optional Cosign keyless signature for a digest-qualified OCI image. |
-| `release-go.yml` | Build and publish a tagged Go release with GoReleaser, then attest the published checksums. |
+| `release-go.yml` | Build and publish a tagged Go release, attest its checksums, optionally attach evidence, and update its major tag. |
 | `release-github-action.yml` | Publish a GitHub Action release and optionally update its major compatibility tag. |
 | `sbom-lifecycle.yml` | Generate source and container CycloneDX SBOMs, sign and verify them with SecureSBOM, and publish them as a workflow artifact. |
 | `source-sbom-go.yml` | Generate, sign, verify, and vulnerability-scan a Go source SBOM without requiring a container registry. |
