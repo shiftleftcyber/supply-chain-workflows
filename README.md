@@ -38,7 +38,21 @@ default.
 
 ## Versioning
 
-Callers should pin reusable workflows to a full commit SHA:
+The moving `v1` compatibility tag is updated to the current `main` commit only after the complete shared-workflow
+validation suite passes. Callers that want centrally managed, backward-compatible v1 updates can use it directly:
+
+```yaml
+jobs:
+  build:
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/build-container-gar.yml@v1
+```
+
+High-assurance callers that require consumer-side review for every workflow change should pin a reviewed full commit
+SHA instead:
 
 ```yaml
 jobs:
@@ -50,7 +64,7 @@ jobs:
     uses: shiftleftcyber/supply-chain-workflows/.github/workflows/build-container-gar.yml@FULL_COMMIT_SHA
 ```
 
-Release tags provide human-readable milestones, but commit SHAs are the supported production reference.
+`v1` never moves to an unvalidated commit. Breaking workflow contracts require a new major channel such as `v2`.
 
 ## Security principles
 

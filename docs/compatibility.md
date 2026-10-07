@@ -2,9 +2,10 @@
 
 ## Supported references
 
-Each compatible workflow-library release is marked with a semantic version tag. Production callers must resolve that
-tag to a reviewed full commit SHA and use the SHA in `jobs.<job>.uses`. Mutable branches and major-version tags are not
-supported production references.
+The moving `v1` tag is the managed compatibility channel. Automation moves it to the current `main` commit only after
+the complete shared-workflow validation run succeeds. Callers may use `@v1` to receive compatible fixes without
+consumer pull requests, or pin a reviewed full commit SHA when immutable consumer-side review is required. Mutable
+branch references such as `@main` are not supported.
 
 ## Contract changes
 
@@ -24,9 +25,10 @@ normal deprecation window.
 
 ## Caller updates
 
-Dependabot should update the pinned workflow SHA in caller repositories. Callers must run all required CI checks before
-accepting an update. Privileged workflows should first be exercised in a non-production environment when their
-effective behavior, permissions, identity, or artifact format changes.
+Callers using full commit SHAs should use Dependabot to propose updates and must run all required CI checks before
+accepting them. Callers using `v1` receive changes after this repository's validation succeeds, without a caller-side
+pull request. Privileged workflows should first be exercised in a non-production environment when their effective
+behavior, permissions, identity, or artifact format changes.
 
 ## Support boundaries
 

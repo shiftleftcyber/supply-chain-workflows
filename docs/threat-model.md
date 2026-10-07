@@ -17,7 +17,7 @@ build platform.
 ## Trust boundaries
 
 1. The caller repository and its workflow configuration.
-2. The reusable workflow at the exact pinned commit.
+2. The reusable workflow at an exact pinned commit or the validated moving major compatibility tag.
 3. GitHub-hosted runners and GitHub's OIDC/attestation services.
 4. Google Workload Identity Federation and Artifact Registry.
 5. External actions and downloaded tools pinned by version and digest.
@@ -63,6 +63,9 @@ generation succeed, and moves a validated major tag only after all release evide
 - GitHub artifact attestations for private repositories depend on organization plan availability.
 - Callers pinned to an older commit do not automatically receive fixes. Automated update pull requests and prompt
   security advisories are required.
+- Callers using the moving `v1` tag trust every compatible change merged to this repository after its validation suite
+  passes. A repository or maintainer compromise can therefore affect those callers without a consumer-side review.
+  High-assurance or independently governed callers should use full commit SHAs instead.
 - The Interlynk client currently installs its pinned source tree's Python requirements without a lock file containing
   hashes. That workflow should be enabled only when Interlynk publication is required, and the dependency set must be
   reviewed whenever the pinned client commit changes.
