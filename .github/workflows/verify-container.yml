@@ -50,7 +50,9 @@ on:
         description: Optional token for cross-repository private attestation access.
         required: false
 
-permissions: read-all
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   verify:

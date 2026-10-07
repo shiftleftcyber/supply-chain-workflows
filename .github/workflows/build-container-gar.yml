@@ -77,7 +77,10 @@ on:
         description: GitHub artifact attestation URL when provenance is enabled.
         value: ${{ jobs.build.outputs.attestation-url }}
 
-permissions: read-all
+permissions:
+  attestations: write
+  contents: read
+  id-token: write
 
 jobs:
   build:

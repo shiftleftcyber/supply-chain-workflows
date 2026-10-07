@@ -7,6 +7,7 @@ to its full commit SHA.
 
 ## Unreleased
 
+- Replace broad reusable-workflow permission boundaries with the exact union of their jobs' required scopes.
 - Allow Go releases to attach one validated evidence artifact and update the validated major compatibility tag after
   release publication and provenance generation succeed.
 

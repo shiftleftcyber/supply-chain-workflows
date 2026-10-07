@@ -38,7 +38,8 @@ on:
         type: boolean
         default: true
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   test:

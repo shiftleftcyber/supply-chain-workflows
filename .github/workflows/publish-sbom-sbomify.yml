@@ -24,7 +24,9 @@ on:
         description: Sbomify API token.
         required: true
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
 
 jobs:
   publish:

@@ -48,7 +48,8 @@ on:
         description: Signed source SBOM filename.
         value: ${{ jobs.sbom.outputs.signed-sbom-file }}
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   sbom:

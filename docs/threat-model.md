@@ -46,6 +46,8 @@ check.
 Reusable workflow permissions can only be maintained or reduced across the caller and callee chain. Workflows that
 upload SARIF declare `security-events: write` at the reusable-workflow boundary, then explicitly remove it from jobs
 that do not upload results. Callers must grant the same scope; GitHub rejects an attempted elevation before jobs start.
+Every reusable workflow boundary therefore declares only the union of its jobs' required scopes. Broad declarations
+such as `read-all` are prohibited because they force least-privilege callers to grant unrelated repository access.
 
 The Go release workflow accepts only a validated artifact name and a single basename when attaching evidence produced
 earlier in the same workflow run. It rejects paths and empty files, uploads only after GoReleaser and provenance
