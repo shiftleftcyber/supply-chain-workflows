@@ -62,7 +62,9 @@ on:
         description: Signed container SBOM filename.
         value: ${{ jobs.sbom.outputs.container-sbom-file }}
 
-permissions: read-all
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   sbom:

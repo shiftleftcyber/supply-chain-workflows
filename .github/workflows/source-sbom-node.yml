@@ -35,7 +35,8 @@ on:
         description: SecureSBOM API key.
         required: true
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   sbom:

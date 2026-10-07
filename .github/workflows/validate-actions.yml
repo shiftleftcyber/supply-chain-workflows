@@ -3,7 +3,8 @@ name: Validate GitHub Actions
 on:
   workflow_call:
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   policy:

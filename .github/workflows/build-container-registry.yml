@@ -60,7 +60,11 @@ on:
         description: Digest-qualified OCI image reference.
         value: ${{ jobs.build.outputs.image-ref }}
 
-permissions: read-all
+permissions:
+  attestations: write
+  contents: read
+  id-token: write
+  packages: write
 
 jobs:
   build:

@@ -44,7 +44,8 @@ on:
         type: string
         default: go-coverage
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   test:
