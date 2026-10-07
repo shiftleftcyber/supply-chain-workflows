@@ -2,12 +2,13 @@
 
 All notable changes to the reusable workflow contracts are documented here.
 
-The project follows semantic versioning for workflow contract releases. Callers must still pin the selected release
-to its full commit SHA.
+The project follows semantic versioning for workflow contract releases. Callers may use the validated moving major tag
+or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
 - Replace broad reusable-workflow permission boundaries with the exact union of their jobs' required scopes.
+- Add a validated moving `v1` compatibility tag for callers that opt into centrally managed workflow updates.
 - Allow Go releases to attach one validated evidence artifact and update the validated major compatibility tag after
   release publication and provenance generation succeed.
 

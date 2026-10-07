@@ -8,7 +8,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   policy:
@@ -69,3 +69,55 @@ jobs:
           online-audits: true
           persona: regular
           version: v1.29.0
+
+  update-v1:
+    name: update v1 compatibility tag
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - actionlint
+      - policy
+      - zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: update-v1-compatibility-tag
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - name: Move v1 to validated main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: v1
+          VALIDATED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${VALIDATED_SHA}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Validated commit is not a full Git SHA."
+            exit 1
+          fi
+
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
+          if [[ "${current_main}" != "${VALIDATED_SHA}" ]]; then
+            echo "Skipping ${VALIDATED_SHA}; main has advanced to ${current_main}."
+            exit 0
+          fi
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" \
+              -f sha="${VALIDATED_SHA}" \
+              -F force=true >/dev/null
+          else
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${TAG_NAME}" \
+              -f sha="${VALIDATED_SHA}" >/dev/null
+          fi
+
+          {
+            echo "### v1 compatibility tag updated"
+            echo "- Commit: \`${VALIDATED_SHA}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
