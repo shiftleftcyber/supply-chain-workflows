@@ -1,7 +1,8 @@
 # Usage
 
-Always replace `FULL_COMMIT_SHA` with a reviewed commit from this repository. The calling workflow must grant every
-permission requested by the called workflow; permissions cannot be elevated through a reusable workflow.
+Use `v1` for centrally managed, backward-compatible updates, or replace `FULL_COMMIT_SHA` with a reviewed commit when
+the caller requires an immutable reference and consumer-side review for every update. The calling workflow must grant
+every permission requested by the called workflow; permissions cannot be elevated through a reusable workflow.
 
 ## Validate caller workflows
 
