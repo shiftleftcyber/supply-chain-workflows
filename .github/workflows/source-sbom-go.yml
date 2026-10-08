@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: ''
+      component-type:
+        description: CycloneDX component type; use library for non-main Go modules.
+        required: false
+        type: string
+        default: application
       secure-sbom-signing-key-id:
         description: SecureSBOM signing-key identifier.
         required: true
@@ -68,11 +73,16 @@ jobs:
         shell: bash
         env:
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          COMPONENT_TYPE: ${{ inputs.component-type }}
           FILE_PREFIX: ${{ inputs.file-prefix }}
           GO_VERSION_FILE: ${{ inputs.go-version-file }}
           SOURCE_DIRECTORY: ${{ inputs.source-directory }}
         run: |
           set -euo pipefail
+          if [[ "${COMPONENT_TYPE}" != "application" && "${COMPONENT_TYPE}" != "library" ]]; then
+            echo "Component type must be application or library."
+            exit 1
+          fi
           for candidate in "${GO_VERSION_FILE}" "${SOURCE_DIRECTORY}"; do
             if [[ ! "${candidate}" =~ ^[A-Za-z0-9._/-]+$ ]] \
               || [[ "${candidate}" == /* ]] \
@@ -116,11 +126,16 @@ jobs:
         shell: bash
         working-directory: ${{ inputs.source-directory }}
         env:
+          COMPONENT_TYPE: ${{ inputs.component-type }}
           GOEXPERIMENT: ${{ inputs.goexperiment }}
           OUTPUT_FILE: ${{ github.workspace }}/${{ steps.files.outputs.unsigned }}
         run: |
           set -euo pipefail
-          cyclonedx-gomod app -licenses -json -output-version 1.6 -output "${OUTPUT_FILE}" .
+          if [[ "${COMPONENT_TYPE}" == "library" ]]; then
+            cyclonedx-gomod mod -type library -licenses -json -output-version 1.6 -output "${OUTPUT_FILE}" .
+          else
+            cyclonedx-gomod app -licenses -json -output-version 1.6 -output "${OUTPUT_FILE}" .
+          fi
 
       - name: Sign source SBOM
         uses: shiftleftcyber/secure-sbom-action@542dffaadd81bc0614947d749720558a399e6454 # v2.4.0
