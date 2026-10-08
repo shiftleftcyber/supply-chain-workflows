@@ -57,6 +57,12 @@ Source SBOM workflows accept only enumerated component and generator types. ReAR
 available for backward compatibility and executes only on trusted, non-pull-request events; callers should select a
 native generator such as `go` when available to avoid repository-defined build containers and stale toolchains.
 
+The OSV scanner consumes one validated JSON basename from a named workflow artifact. It scans a byte-identical copy
+named `bom.json` to satisfy OSV v2's CycloneDX filename detection, verifies that copy before use, and publishes the
+report as a separate artifact so scanning policy is not coupled to SBOM production. The pinned scanner container has a
+read-only root filesystem, read-only SBOM input, and write access only to its report directory. OSV queries necessarily
+disclose package coordinates from the SBOM to the OSV service.
+
 ## Known limitations
 
 - A reusable workflow cannot compensate for a caller that grants credentials to untrusted triggers.

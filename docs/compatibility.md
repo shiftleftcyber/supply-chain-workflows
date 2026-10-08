@@ -23,6 +23,9 @@ A workflow or input is deprecated in documentation before removal. Deprecated co
 one minor release and 90 days unless an active vulnerability requires faster removal. Security advisories override the
 normal deprecation window.
 
+The `fail-on-vulnerabilities` input on `source-sbom-go.yml` is deprecated as of October 8, 2026 and is retained as a
+no-op compatibility input. Callers should use `scan-sbom-osv.yml`; removal will not occur before January 6, 2027.
+
 ## Caller updates
 
 Callers using full commit SHAs should use Dependabot to propose updates and must run all required CI checks before
