@@ -63,6 +63,37 @@ secret. Do not pass all repository secrets to an SBOM workflow.
 Set `component-type: library` for a Go module that does not contain a `main` package. The default `application` mode
 retains the executable-oriented behavior used by existing callers.
 
+## Scan an SBOM with OSV Scanner
+
+Keep vulnerability policy separate from SBOM generation by passing the generated artifact to the scanner workflow:
+
+```yaml
+jobs:
+  source-sbom:
+    permissions:
+      contents: read
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/source-sbom-go.yml@FULL_COMMIT_SHA
+    with:
+      component-type: library
+      file-prefix: example-${{ github.sha }}
+      secure-sbom-signing-key-id: ${{ vars.SECURE_SBOM_SIGNING_KEY_ID }}
+    secrets:
+      secure-sbom-api-key: ${{ secrets.SECURE_SBOM_API_KEY }}
+
+  osv-scan:
+    needs: source-sbom
+    permissions:
+      actions: read
+      contents: read
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/scan-sbom-osv.yml@FULL_COMMIT_SHA
+    with:
+      artifact-name: ${{ needs.source-sbom.outputs.artifact-name }}
+      sbom-file: ${{ needs.source-sbom.outputs.signed-sbom-file }}
+```
+
+The scanner makes a byte-identical temporary copy named `bom.json` because OSV Scanner v2 detects CycloneDX input by
+filename. It verifies the copy before scanning and uploads only the scan report as a separate artifact.
+
 ## Build, attest, and sign a GAR image
 
 ```yaml

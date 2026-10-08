@@ -1,0 +1,121 @@
+name: Scan SBOM with OSV Scanner
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Existing workflow artifact containing the SBOM.
+        required: true
+        type: string
+      sbom-file:
+        description: SBOM JSON basename within the downloaded artifact.
+        required: true
+        type: string
+      report-artifact-name:
+        description: Artifact name for the OSV JSON report.
+        required: false
+        type: string
+        default: osv-scan-report
+      fail-on-vulnerabilities:
+        description: Fail when OSV Scanner reports vulnerabilities.
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      report-artifact-name:
+        description: Uploaded artifact containing the OSV JSON report.
+        value: ${{ jobs.scan.outputs.report-artifact-name }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  scan:
+    name: Scan SBOM with OSV Scanner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      report-artifact-name: ${{ inputs.report-artifact-name }}
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          REPORT_ARTIFACT_NAME: ${{ inputs.report-artifact-name }}
+          SBOM_FILE: ${{ inputs.sbom-file }}
+        run: |
+          set -euo pipefail
+          for candidate in "${ARTIFACT_NAME}" "${REPORT_ARTIFACT_NAME}"; do
+            if [[ ! "${candidate}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+              echo "Artifact names must contain only safe characters."
+              exit 1
+            fi
+          done
+          if [[ ! "${SBOM_FILE}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,119}[.]json$ ]]; then
+            echo "SBOM file must be a safe JSON basename."
+            exit 1
+          fi
+
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: input
+
+      - name: Prepare OSV-compatible SBOM name
+        shell: bash
+        env:
+          SBOM_FILE: ${{ inputs.sbom-file }}
+        run: |
+          set -euo pipefail
+          source_file="input/${SBOM_FILE}"
+          if [[ ! -f "${source_file}" || ! -s "${source_file}" ]]; then
+            echo "The requested SBOM is missing or empty."
+            exit 1
+          fi
+          mkdir -p osv-input report
+          cp -- "${source_file}" osv-input/bom.json
+          source_hash="$(sha256sum "${source_file}" | cut -d ' ' -f 1)"
+          scan_hash="$(sha256sum osv-input/bom.json | cut -d ' ' -f 1)"
+          if [[ "${source_hash}" != "${scan_hash}" ]] || ! cmp --silent "${source_file}" osv-input/bom.json; then
+            echo "The OSV-compatible copy does not match the source SBOM."
+            exit 1
+          fi
+
+      - name: Scan SBOM
+        id: osv
+        shell: bash
+        env:
+          OSV_SCANNER_IMAGE: ghcr.io/google/osv-scanner@sha256:4d3d1a42ba435ac706286fec518c044f049c9753d21260b5bae60bab8740ed97
+        run: |
+          set -uo pipefail
+          exit_code=0
+          docker run --rm \
+            --read-only \
+            --volume "${GITHUB_WORKSPACE}/osv-input:/input:ro" \
+            --volume "${GITHUB_WORKSPACE}/report:/report" \
+            "${OSV_SCANNER_IMAGE}" scan \
+              --format json \
+              --output-file /report/osv-results.json \
+              /input/bom.json || exit_code=$?
+          echo "exit-code=${exit_code}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload OSV report
+        if: always() && hashFiles('report/osv-results.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.report-artifact-name }}
+          if-no-files-found: error
+          retention-days: 30
+          path: report/osv-results.json
+
+      - name: Enforce vulnerability policy
+        if: steps.osv.outputs.exit-code != '0' && (inputs.fail-on-vulnerabilities || steps.osv.outputs.exit-code != '1')
+        shell: bash
+        run: |
+          echo "OSV Scanner found vulnerabilities or failed to complete."
+          exit 1

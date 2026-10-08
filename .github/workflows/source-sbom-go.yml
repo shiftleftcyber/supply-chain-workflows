@@ -32,12 +32,12 @@ on:
         required: true
         type: string
       artifact-name:
-        description: Artifact containing the SBOM and scan evidence.
+        description: Artifact containing the unsigned and signed SBOM.
         required: false
         type: string
         default: signed-source-sbom
       fail-on-vulnerabilities:
-        description: Fail when OSV Scanner reports a vulnerability.
+        description: Deprecated compatibility input; scanning now belongs in scan-sbom-osv.yml.
         required: false
         type: boolean
         default: true
@@ -58,7 +58,7 @@ permissions:
 
 jobs:
   sbom:
-    name: Generate, sign, verify, and scan Go SBOM
+    name: Generate, sign, and verify Go SBOM
     if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -74,11 +74,15 @@ jobs:
         env:
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
           COMPONENT_TYPE: ${{ inputs.component-type }}
+          DEPRECATED_FAIL_ON_VULNERABILITIES: ${{ inputs.fail-on-vulnerabilities }}
           FILE_PREFIX: ${{ inputs.file-prefix }}
           GO_VERSION_FILE: ${{ inputs.go-version-file }}
           SOURCE_DIRECTORY: ${{ inputs.source-directory }}
         run: |
           set -euo pipefail
+          if [[ "${DEPRECATED_FAIL_ON_VULNERABILITIES}" == "true" ]]; then
+            echo "::warning::fail-on-vulnerabilities is deprecated; call scan-sbom-osv.yml explicitly."
+          fi
           if [[ "${COMPONENT_TYPE}" != "application" && "${COMPONENT_TYPE}" != "library" ]]; then
             echo "Component type must be application or library."
             exit 1
@@ -101,7 +105,6 @@ jobs:
           {
             echo "unsigned=${FILE_PREFIX}.source.cdx.json"
             echo "signed=${FILE_PREFIX}.source.cdx.signed.json"
-            echo "report=${FILE_PREFIX}.source.osv.json"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Check out source
@@ -153,21 +156,6 @@ jobs:
           secure_sbom_api_key: ${{ secrets.secure-sbom-api-key }}
           secure_sbom_signing_key_id: ${{ inputs.secure-sbom-signing-key-id }}
 
-      - name: Scan signed source SBOM
-        id: osv
-        continue-on-error: true
-        shell: bash
-        env:
-          OSV_SCANNER_IMAGE: ghcr.io/google/osv-scanner@sha256:4d3d1a42ba435ac706286fec518c044f049c9753d21260b5bae60bab8740ed97
-          REPORT_FILE: ${{ steps.files.outputs.report }}
-          SBOM_FILE: ${{ steps.files.outputs.signed }}
-        run: |
-          set -euo pipefail
-          docker run --rm \
-            --volume "${GITHUB_WORKSPACE}:/workspace" \
-            --workdir /workspace \
-            "${OSV_SCANNER_IMAGE}" scan --format json --output "${REPORT_FILE}" "${SBOM_FILE}"
-
       - name: Confirm generated evidence
         shell: bash
         env:
@@ -188,11 +176,3 @@ jobs:
           path: |
             ${{ steps.files.outputs.unsigned }}
             ${{ steps.files.outputs.signed }}
-            ${{ steps.files.outputs.report }}
-
-      - name: Enforce vulnerability policy
-        if: inputs.fail-on-vulnerabilities && steps.osv.outcome != 'success'
-        shell: bash
-        run: |
-          echo "OSV Scanner found vulnerabilities or failed to complete."
-          exit 1
