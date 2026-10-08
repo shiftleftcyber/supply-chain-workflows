@@ -53,6 +53,10 @@ The Go release workflow accepts only a validated artifact name and a single base
 earlier in the same workflow run. It rejects paths and empty files, uploads only after GoReleaser and provenance
 generation succeed, and moves a validated major tag only after all release evidence has been published.
 
+Source SBOM workflows accept only enumerated component and generator types. ReARM's `custom` generator remains
+available for backward compatibility and executes only on trusted, non-pull-request events; callers should select a
+native generator such as `go` when available to avoid repository-defined build containers and stale toolchains.
+
 ## Known limitations
 
 - A reusable workflow cannot compensate for a caller that grants credentials to untrusted triggers.

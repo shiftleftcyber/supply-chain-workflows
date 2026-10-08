@@ -32,6 +32,11 @@ on:
         required: false
         type: string
         default: rearm-signed-sbom
+      source-code-sbom-type:
+        description: ReARM source SBOM generator for the caller's project type.
+        required: false
+        type: string
+        default: custom
     secrets:
       rearm-api-id:
         description: ReARM component API ID.
@@ -64,8 +69,16 @@ jobs:
           PROJECT_VERSION: ${{ inputs.project-version }}
           REARM_API_URL: ${{ inputs.rearm-api-url }}
           SECURE_SBOM_API_URL: ${{ inputs.secure-sbom-api-url }}
+          SOURCE_CODE_SBOM_TYPE: ${{ inputs.source-code-sbom-type }}
         run: |
           set -euo pipefail
+          case "${SOURCE_CODE_SBOM_TYPE}" in
+            custom|go|helm|npm|other) ;;
+            *)
+              echo "Source code SBOM type must be custom, go, helm, npm, or other."
+              exit 1
+              ;;
+          esac
           if [[ ! "${ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] \
             || [[ ! "${COMPONENT_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] \
             || [[ ! "${DELIVERABLE_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$ ]] \
@@ -127,7 +140,7 @@ jobs:
           securesbom_api_key: ${{ secrets.secure-sbom-api-key }}
           securesbom_host: ${{ inputs.secure-sbom-api-url }}
           securesbom_pub_key_id: ${{ inputs.secure-sbom-signing-key-id }}
-          source_code_sbom_type: custom
+          source_code_sbom_type: ${{ inputs.source-code-sbom-type }}
 
       - name: Confirm generated evidence
         shell: bash

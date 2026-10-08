@@ -50,6 +50,7 @@ jobs:
       contents: read
     uses: shiftleftcyber/supply-chain-workflows/.github/workflows/source-sbom-go.yml@FULL_COMMIT_SHA
     with:
+      component-type: library
       file-prefix: example-${{ github.sha }}
       secure-sbom-signing-key-id: ${{ vars.SECURE_SBOM_SIGNING_KEY_ID }}
     secrets:
@@ -58,6 +59,9 @@ jobs:
 
 Publication should be a separate dependent job that receives the exact artifact and only the destination-specific
 secret. Do not pass all repository secrets to an SBOM workflow.
+
+Set `component-type: library` for a Go module that does not contain a `main` package. The default `application` mode
+retains the executable-oriented behavior used by existing callers.
 
 ## Build, attest, and sign a GAR image
 
