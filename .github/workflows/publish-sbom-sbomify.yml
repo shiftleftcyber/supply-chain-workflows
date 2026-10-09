@@ -62,7 +62,7 @@ jobs:
           path: evidence
 
       - name: Publish to Sbomify
-        uses: sbomify/github-action@ddf6a0d3d75b645153ad1ad60034b3fe2cb1eb63 # v26.7.0
+        uses: sbomify/github-action@fc7f05256cca65c26c8010da5faf3203e9477e5c # v26.9.0
         env:
           AUGMENT: false
           COMPONENT_ID: ${{ inputs.component-id }}
