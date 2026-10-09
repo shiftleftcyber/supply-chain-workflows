@@ -83,6 +83,8 @@ disclose package coordinates from the SBOM to the OSV service.
   reviewed digest-pinned distribution is available.
 - The Go security workflow permits Go's authenticated automatic toolchain selection only while compiling the pinned
   govulncheck version. Scanning continues with the caller module's declared Go toolchain.
+- The Go security workflow permits callers to explicitly disable govulncheck for a documented, temporary risk
+  acceptance. It remains enabled by default, and disabling it does not disable dependency review or CodeQL.
 - Token-authenticated registries do not provide OIDC federation in every configuration. Callers must provide a scoped,
   short-lived token when the registry supports one and must never expose the token to pull-request jobs.
 
