@@ -40,6 +40,9 @@ jobs:
       go-version-file: api/go.mod
 ```
 
+`run-govulncheck` defaults to `true`. Setting it to `false` is an explicit risk acceptance intended only for a
+time-bounded exception; dependency review and CodeQL continue to run independently.
+
 ## Generate a source-only Go SBOM
 
 ```yaml

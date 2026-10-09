@@ -23,6 +23,11 @@ on:
         required: false
         type: boolean
         default: true
+      run-govulncheck:
+        description: Run govulncheck; disable only for a documented, temporary risk acceptance.
+        required: false
+        type: boolean
+        default: true
       run-codeql:
         description: Run CodeQL analysis.
         required: false
@@ -38,6 +43,7 @@ permissions:
 jobs:
   govulncheck:
     name: govulncheck
+    if: inputs.run-govulncheck
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
