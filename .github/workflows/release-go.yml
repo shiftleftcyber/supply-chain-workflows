@@ -131,13 +131,13 @@ jobs:
 
       - name: Generate build provenance for release artifacts
         id: attest
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: ${{ inputs.working-directory }}/${{ inputs.checksum-file }}
 
       - name: Download release evidence
         if: inputs.evidence-artifact-name != '' && inputs.evidence-file != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.evidence-artifact-name }}
           path: ${{ runner.temp }}/release-evidence
