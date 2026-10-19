@@ -24,7 +24,7 @@ arbitrary shell commands or inheriting all caller secrets.
 | `publish-sbom-sbomify.yml` | Publish one named signed SBOM artifact to Sbomify. |
 | `rearm.yml` | Generate, sign, and publish evidence through ReARM. |
 | `terraform-validate.yml` | Run formatting, initialization without a backend, and validation over an explicit directory matrix. |
-| `node-ci.yml` | Install, lint, test, and build a Node project with controlled package-manager behavior. |
+| `node-ci.yml` | Install, optionally check formatting, lint, test, and build a Node project with controlled package-manager behavior. |
 | `go-lint.yml` | Run pinned Go linting against a module. |
 | `security-go.yml` | Run govulncheck, dependency review, and CodeQL for a Go module. |
 | `shellcheck.yml` | Run pinned ShellCheck analysis against a selected directory. |
