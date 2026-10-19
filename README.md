@@ -13,7 +13,7 @@ arbitrary shell commands or inheriting all caller secrets.
 | `build-container-registry.yml` | Build, attest, and sign an image for GHCR or another token-authenticated OCI registry. |
 | `container-sbom.yml` | Generate, sign, and verify an SBOM for a digest-qualified container image. |
 | `go-ci.yml` | Format, vet, test, build, and optionally smoke-test a Go container. |
-| `verify-container.yml` | Verify GitHub build provenance and an optional Cosign keyless signature for a digest-qualified OCI image. |
+| `verify-container.yml` | Verify GitHub build provenance and an optional Cosign keyless signature for a digest-qualified OCI image, optionally through a protected environment. |
 | `release-go.yml` | Build and publish a tagged Go release, attest its checksums, optionally attach evidence, and update its major tag. |
 | `release-github-action.yml` | Publish a GitHub Action release and optionally update its major compatibility tag. |
 | `sbom-lifecycle.yml` | Generate source and container CycloneDX SBOMs, sign and verify them with SecureSBOM, and publish them as a workflow artifact. |

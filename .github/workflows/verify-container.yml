@@ -30,6 +30,11 @@ on:
         required: false
         type: string
         default: ''
+      environment:
+        description: Optional protected GitHub environment used for private-registry authentication.
+        required: false
+        type: string
+        default: ''
       cosign-enabled:
         description: Also require a valid keyless Cosign signature.
         required: false
@@ -58,6 +63,7 @@ jobs:
   verify:
     name: Verify immutable container
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || null }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -70,6 +76,7 @@ jobs:
           CERTIFICATE_IDENTITY_REGEXP: ${{ inputs.certificate-identity-regexp }}
           COSIGN_ENABLED: ${{ inputs.cosign-enabled }}
           IMAGE_REF: ${{ inputs.image-ref }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
           REGISTRY: ${{ inputs.registry }}
           SERVICE_ACCOUNT: ${{ inputs.service-account }}
           SIGNER_WORKFLOW: ${{ inputs.signer-workflow }}
@@ -79,6 +86,12 @@ jobs:
 
           if [[ ! "${IMAGE_REF}" =~ ^[a-z0-9][a-z0-9.:/_-]+@sha256:[a-f0-9]{64}$ ]]; then
             echo "Image reference must be fully qualified and contain an sha256 digest."
+            exit 1
+          fi
+
+          if [[ -n "${TARGET_ENVIRONMENT}" ]] \
+            && [[ ! "${TARGET_ENVIRONMENT}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+            echo "Environment name contains unsupported characters."
             exit 1
           fi
 
