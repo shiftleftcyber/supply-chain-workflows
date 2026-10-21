@@ -44,7 +44,7 @@ on:
         description: Verify provenance through GitHub Artifact Attestations.
         required: false
         type: boolean
-        default: true
+        default: false
       buildkit-provenance-enabled:
         description: Verify registry-attached BuildKit SLSA provenance.
         required: false

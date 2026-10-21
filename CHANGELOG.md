@@ -7,6 +7,8 @@ or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
+- Make container attestations opt-in, disable BuildKit-native provenance, and use GitHub Artifact Attestations as the
+  only provenance generator when explicitly enabled.
 - Separate registry-attached BuildKit SLSA provenance from optional GitHub Artifact Attestations so private
   repositories without Enterprise Cloud can retain provenance and Cosign verification.
 - Require OSV inputs to be unsigned CycloneDX documents and update OSV Scanner to v2.7.0 for CycloneDX 1.7 support.

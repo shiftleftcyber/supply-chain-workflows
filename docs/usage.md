@@ -133,9 +133,9 @@ jobs:
 The Google trust policy should constrain the repository, organization, ref, and reusable workflow identity. Do not use
 one unrestricted service account across the organization.
 
-Private repositories outside GitHub Enterprise Cloud cannot persist GitHub Artifact Attestations. Keep BuildKit SLSA
-provenance and Cosign enabled, set `github-attestation-enabled: false` on both the build and verification calls, and set
-`buildkit-provenance-enabled: true` on verification. The provenance remains attached to the OCI image in the registry.
+Container provenance is opt-in and is generated only through GitHub Artifact Attestations. Private repositories outside
+GitHub Enterprise Cloud must leave `provenance-enabled` and `github-attestation-enabled` false. Cosign signing and
+verification remain independently enabled by default.
 
 ## Verify before deployment
 
