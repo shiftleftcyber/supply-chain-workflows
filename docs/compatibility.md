@@ -30,8 +30,10 @@ no-op compatibility input. Callers should use `scan-sbom-osv.yml`; removal will 
 
 Callers using full commit SHAs should use Dependabot to propose updates and must run all required CI checks before
 accepting them. Callers using `v1` receive changes after this repository's validation succeeds, without a caller-side
-pull request. Privileged workflows should first be exercised in a non-production environment when their effective
-behavior, permissions, identity, or artifact format changes.
+pull request. The shared `validate-actions.yml` policy permits `@v1` only for workflows in this repository; callers
+using Zizmor must likewise configure `shiftleftcyber/supply-chain-workflows/*` for `ref-pin` while retaining `hash-pin`
+for every other repository. Privileged workflows should first be exercised in a non-production environment when their
+effective behavior, permissions, identity, or artifact format changes.
 
 ## Support boundaries
 

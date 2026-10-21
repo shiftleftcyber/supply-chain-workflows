@@ -13,6 +13,8 @@ or pin a selected release to its full commit SHA.
 - Allow Node SBOM callers to generate a runtime-only dependency inventory for deployable web artifacts.
 - Replace broad reusable-workflow permission boundaries with the exact union of their jobs' required scopes.
 - Add a validated moving `v1` compatibility tag for callers that opt into centrally managed workflow updates.
+- Permit only the organization-managed `supply-chain-workflows@v1` channel through reusable workflow policy while
+  retaining full-SHA enforcement for every other external action and workflow.
 - Allow Go releases to attach one validated evidence artifact and update the validated major compatibility tag after
   release publication and provenance generation succeed.
 
