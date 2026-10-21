@@ -7,6 +7,7 @@ or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
+- Correct the default Cosign certificate identity policy to match the reusable container-build workflow identity.
 - Remove dormant attestation steps and their static `attestations: write` requirement from container builds. Retain
   deprecated inputs as fail-closed compatibility guards until a separate attestation workflow is introduced.
 - Make container attestations opt-in, disable BuildKit-native provenance, and use GitHub Artifact Attestations as the

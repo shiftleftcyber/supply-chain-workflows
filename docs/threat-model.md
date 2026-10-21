@@ -39,6 +39,9 @@ build platform.
 | Supply-chain compromise | A build tool, package, or action is replaced upstream. | Pin actions and images immutably, pin tool versions, centralize review, and fail when reviewed source tags resolve unexpectedly. |
 | Confused deputy | A caller publishes the wrong artifact or targets an attacker-controlled service. | Validate artifact names, identifiers, HTTPS endpoints, image digests, and registry ownership before privileged operations. |
 
+Cosign identity checks for shared container builds match the reusable workflow identity embedded in the Fulcio
+certificate. They do not match the caller workflow identity, which is not the signing job's `job_workflow_ref`.
+
 Workflow changes are statically analyzed by both `actionlint` and Zizmor. Zizmor runs in blocking console mode with
 the regular persona and online audits. Any reported actionable finding fails the pull-request check. Consumers may
 configure `unpinned-uses` to permit the organization-managed `shiftleftcyber/supply-chain-workflows@v1` channel; all
