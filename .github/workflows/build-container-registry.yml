@@ -38,7 +38,7 @@ on:
         description: Generate GitHub build provenance.
         required: false
         type: boolean
-        default: true
+        default: false
       cosign-enabled:
         description: Sign and verify the digest-qualified image with keyless Cosign.
         required: false

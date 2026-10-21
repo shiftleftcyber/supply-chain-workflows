@@ -71,7 +71,9 @@ disclose package coordinates from the SBOM to the OSV service.
   for deployment.
 - An SBOM signature proves signed-content integrity and signing-key association; it does not prove SBOM completeness or
   factual correctness.
-- GitHub artifact attestations for private repositories depend on organization plan availability.
+- GitHub artifact attestations are opt-in and depend on organization plan availability for private repositories.
+- Container builds explicitly disable BuildKit-native provenance. When provenance is enabled, the reviewed
+  `actions/attest` step is the sole attestation generator.
 - Callers pinned to an older commit do not automatically receive fixes. Automated update pull requests and prompt
   security advisories are required.
 - Callers using the moving `v1` tag trust every compatible change merged to this repository after its validation suite
