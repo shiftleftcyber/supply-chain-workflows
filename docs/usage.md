@@ -153,10 +153,14 @@ jobs:
       registry: northamerica-northeast2-docker.pkg.dev
       workload-identity-provider: projects/123456789/locations/global/workloadIdentityPools/github/providers/github
       service-account: github-reader@example-project.iam.gserviceaccount.com
-      certificate-identity-regexp: '^https://github.com/shiftleftcyber/example-api/.github/workflows/release.yml@refs/(heads/main|tags/v.*)$'
+      certificate-identity-regexp: '^https://github\.com/shiftleftcyber/supply-chain-workflows/\.github/workflows/build-container-gar\.yml@(refs/tags/v1|[a-f0-9]{40})$'
 ```
 
 Make deployment depend on this job and consume only its already verified digest-qualified image reference.
+
+Cosign keyless certificates identify the reusable workflow that executes the signing step, not the caller workflow.
+The certificate identity policy must therefore match `build-container-gar.yml` at the reviewed `v1` tag or an immutable
+full commit SHA.
 
 ## Generate and protect SBOMs
 

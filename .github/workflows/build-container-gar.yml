@@ -162,7 +162,7 @@ jobs:
           fi
 
           if [[ -z "${CERTIFICATE_IDENTITY_REGEXP}" ]]; then
-            CERTIFICATE_IDENTITY_REGEXP="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/.+@refs/(heads|tags)/.+$"
+            CERTIFICATE_IDENTITY_REGEXP='^https://github\.com/shiftleftcyber/supply-chain-workflows/\.github/workflows/build-container-gar\.yml@(refs/tags/v1|[a-f0-9]{40})$'
           fi
 
           {
