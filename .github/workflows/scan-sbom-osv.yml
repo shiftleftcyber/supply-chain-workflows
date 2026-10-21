@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       report-artifact-name:
-        description: Artifact name for the OSV JSON report.
+        description: Artifact name for the OSV JSON, HTML, and SARIF reports.
         required: false
         type: string
         default: osv-scan-report
@@ -20,10 +20,10 @@ on:
         description: Fail when OSV Scanner reports vulnerabilities.
         required: false
         type: boolean
-        default: true
+        default: false
     outputs:
       report-artifact-name:
-        description: Uploaded artifact containing the OSV JSON report.
+        description: Uploaded artifact containing the OSV JSON, HTML, and SARIF reports.
         value: ${{ jobs.scan.outputs.report-artifact-name }}
 
 permissions:
@@ -101,29 +101,98 @@ jobs:
           OSV_SCANNER_IMAGE: ghcr.io/google/osv-scanner@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0 # v2.7.0
         run: |
           set -uo pipefail
-          exit_code=0
-          docker run --rm \
-            --read-only \
-            --volume "${GITHUB_WORKSPACE}/osv-input:/input:ro" \
-            --volume "${GITHUB_WORKSPACE}/report:/report" \
-            "${OSV_SCANNER_IMAGE}" scan \
-              --format json \
-              --output-file /report/osv-results.json \
-              /input/bom.json || exit_code=$?
-          echo "exit-code=${exit_code}" >> "${GITHUB_OUTPUT}"
+          operational_error=false
+          findings=false
 
-      - name: Upload OSV report
+          run_scan() {
+            local format="$1"
+            local output_file="$2"
+            local exit_code=0
+            docker run --rm \
+              --read-only \
+              --volume "${GITHUB_WORKSPACE}/osv-input:/input:ro" \
+              --volume "${GITHUB_WORKSPACE}/report:/report" \
+              "${OSV_SCANNER_IMAGE}" scan \
+                --format "${format}" \
+                --output-file "/report/${output_file}" \
+                /input/bom.json || exit_code=$?
+
+            case "${exit_code}" in
+              0) ;;
+              1) findings=true ;;
+              *)
+                echo "OSV Scanner failed while generating ${format} output (exit ${exit_code})." >&2
+                operational_error=true
+                ;;
+            esac
+          }
+
+          run_scan json osv-results.json
+          run_scan html osv-results.html
+          run_scan sarif osv-results.sarif
+
+          echo "findings=${findings}" >> "${GITHUB_OUTPUT}"
+          echo "operational-error=${operational_error}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish scan summary
+        if: always() && hashFiles('report/osv-results.json') != ''
+        shell: bash
+        env:
+          FINDINGS: ${{ steps.osv.outputs.findings }}
+          OPERATIONAL_ERROR: ${{ steps.osv.outputs.operational-error }}
+          REPORT_ARTIFACT_NAME: ${{ inputs.report-artifact-name }}
+        run: |
+          set -euo pipefail
+          jq -e '.results | type == "array"' report/osv-results.json >/dev/null
+
+          vulnerable_packages="$(jq '[.results[]?.packages[]? | select((.groups // []) | length > 0)] | length' report/osv-results.json)"
+          vulnerability_groups="$(jq '[.results[]?.packages[]?.groups[]?] | length' report/osv-results.json)"
+
+          {
+            echo "## OSV vulnerability scan"
+            echo
+            if [[ "${OPERATIONAL_ERROR}" == "true" ]]; then
+              echo "> [!CAUTION]"
+              echo "> OSV Scanner did not complete successfully. This job will fail."
+            elif [[ "${FINDINGS}" == "true" ]]; then
+              echo "> [!WARNING]"
+              echo "> OSV found ${vulnerability_groups} vulnerability group(s) affecting ${vulnerable_packages} package(s)."
+            else
+              echo "No known vulnerabilities were found."
+            fi
+            echo
+            echo "Detailed JSON, HTML, and SARIF reports are available in the \`${REPORT_ARTIFACT_NAME}\` workflow artifact."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [[ "${FINDINGS}" == "true" ]]; then
+            echo "::warning title=OSV vulnerabilities found::${vulnerability_groups} vulnerability group(s) affect ${vulnerable_packages} package(s). Review the ${REPORT_ARTIFACT_NAME} artifact."
+          fi
+
+      - name: Upload OSV reports
         if: always() && hashFiles('report/osv-results.json') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ inputs.report-artifact-name }}
           if-no-files-found: error
           retention-days: 30
-          path: report/osv-results.json
+          path: |
+            report/osv-results.html
+            report/osv-results.json
+            report/osv-results.sarif
 
-      - name: Enforce vulnerability policy
-        if: steps.osv.outputs.exit-code != '0' && (inputs.fail-on-vulnerabilities || steps.osv.outputs.exit-code != '1')
+      - name: Enforce scan policy
+        if: always() && (steps.osv.outputs.operational-error == 'true' || (steps.osv.outputs.findings == 'true' && inputs.fail-on-vulnerabilities))
         shell: bash
+        env:
+          FAIL_ON_VULNERABILITIES: ${{ inputs.fail-on-vulnerabilities }}
+          FINDINGS: ${{ steps.osv.outputs.findings }}
+          OPERATIONAL_ERROR: ${{ steps.osv.outputs.operational-error }}
         run: |
-          echo "OSV Scanner found vulnerabilities or failed to complete."
+          if [[ "${OPERATIONAL_ERROR}" == "true" ]]; then
+            echo "OSV Scanner failed to complete successfully." >&2
+          elif [[ "${FINDINGS}" == "true" && "${FAIL_ON_VULNERABILITIES}" == "true" ]]; then
+            echo "OSV Scanner found vulnerabilities and blocking enforcement is enabled." >&2
+          else
+            echo "The OSV scan policy reached an unexpected state." >&2
+          fi
           exit 1

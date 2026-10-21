@@ -62,10 +62,13 @@ available for backward compatibility and executes only on trusted, non-pull-requ
 native generator such as `go` when available to avoid repository-defined build containers and stale toolchains.
 
 The OSV scanner consumes one validated JSON basename from a named workflow artifact. It scans a byte-identical copy
-named `bom.json` to satisfy OSV v2's CycloneDX filename detection, verifies that copy before use, and publishes the
-report as a separate artifact so scanning policy is not coupled to SBOM production. The pinned scanner container has a
-read-only root filesystem, read-only SBOM input, and write access only to its report directory. OSV queries necessarily
-disclose package coordinates from the SBOM to the OSV service.
+named `bom.json` to satisfy OSV v2's CycloneDX filename detection, verifies that copy before use, and publishes JSON,
+HTML, and SARIF reports as a separate artifact so scanning policy is not coupled to SBOM production. Vulnerability
+findings are non-blocking by default and visibly reported in the job summary; scanner, input-validation, and report
+generation failures remain terminal. Callers may explicitly enable blocking vulnerability enforcement. The pinned
+scanner container has a read-only root filesystem, read-only SBOM input, and write access only to its report directory.
+OSV queries necessarily disclose package coordinates from the SBOM to the OSV service. SARIF upload is excluded from
+the baseline workflow because private repositories require GitHub Code Security and an additional write permission.
 
 ## Known limitations
 

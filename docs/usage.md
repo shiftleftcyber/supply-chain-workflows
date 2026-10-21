@@ -96,7 +96,14 @@ jobs:
 
 Scan the unsigned CycloneDX document from the evidence artifact. The signed file is an evidence envelope rather than a
 CycloneDX document and is intentionally rejected. The scanner makes a byte-identical temporary copy named `bom.json`
-because OSV Scanner v2 detects CycloneDX input by filename, verifies the copy, and uploads only the scan report.
+because OSV Scanner v2 detects CycloneDX input by filename, verifies the copy, adds finding counts to the GitHub Actions
+job summary, and uploads JSON, HTML, and SARIF reports. Findings are non-blocking by default; malformed input, scanner
+failures, and report-generation failures remain terminal. Set `fail-on-vulnerabilities: true` only where a repository
+has explicitly adopted a blocking policy.
+
+SARIF is included in the artifact for every repository but is not uploaded to GitHub code scanning by this baseline
+workflow. Public repositories can upload it separately, while private repositories require GitHub Code Security to be
+enabled and must grant `security-events: write`.
 For deployable web assets, set `required-only: true` on `source-sbom-node.yml` so the signed and scanned inventory
 describes runtime dependencies rather than local linting and test tools.
 
