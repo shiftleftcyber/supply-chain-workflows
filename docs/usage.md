@@ -97,6 +97,8 @@ jobs:
 Scan the unsigned CycloneDX document from the evidence artifact. The signed file is an evidence envelope rather than a
 CycloneDX document and is intentionally rejected. The scanner makes a byte-identical temporary copy named `bom.json`
 because OSV Scanner v2 detects CycloneDX input by filename, verifies the copy, and uploads only the scan report.
+For deployable web assets, set `required-only: true` on `source-sbom-node.yml` so the signed and scanned inventory
+describes runtime dependencies rather than local linting and test tools.
 
 ## Build, attest, and sign a GAR image
 

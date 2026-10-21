@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: 12.3.3
+      required-only:
+        description: Include only runtime-required packages in the Node SBOM.
+        required: false
+        type: boolean
+        default: false
       secure-sbom-signing-key-id:
         description: SecureSBOM signing-key identifier.
         required: true
@@ -96,13 +101,18 @@ jobs:
         env:
           CDXGEN_VERSION: ${{ inputs.cdxgen-version }}
           OUTPUT_FILE: ${{ github.workspace }}/${{ steps.files.outputs.unsigned }}
+          REQUIRED_ONLY: ${{ inputs.required-only }}
           SOURCE_DIRECTORY: ${{ inputs.source-directory }}
         run: |
           set -euo pipefail
-          npx --yes "@cyclonedx/cdxgen@${CDXGEN_VERSION}" \
-            --type js \
-            --output "${OUTPUT_FILE}" \
-            "${SOURCE_DIRECTORY}"
+          cdxgen_args=(
+            --type js
+            --output "${OUTPUT_FILE}"
+          )
+          if [[ "${REQUIRED_ONLY}" == "true" ]]; then
+            cdxgen_args+=(--required-only)
+          fi
+          npx --yes "@cyclonedx/cdxgen@${CDXGEN_VERSION}" "${cdxgen_args[@]}" "${SOURCE_DIRECTORY}"
 
       - name: Sign Node SBOM
         uses: shiftleftcyber/secure-sbom-action@542dffaadd81bc0614947d749720558a399e6454 # v2.4.0
