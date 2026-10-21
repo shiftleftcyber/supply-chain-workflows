@@ -77,6 +77,14 @@ jobs:
             echo "The requested SBOM is missing or empty."
             exit 1
           fi
+          if ! jq -e '
+            .bomFormat == "CycloneDX" and
+            (.specVersion | type == "string") and
+            (.components | type == "array")
+          ' "${source_file}" >/dev/null; then
+            echo "The requested file is not an unsigned CycloneDX SBOM. Scan the *.cdx.json file, not the signed evidence envelope." >&2
+            exit 1
+          fi
           mkdir -p osv-input report
           cp -- "${source_file}" osv-input/bom.json
           source_hash="$(sha256sum "${source_file}" | cut -d ' ' -f 1)"
@@ -90,7 +98,7 @@ jobs:
         id: osv
         shell: bash
         env:
-          OSV_SCANNER_IMAGE: ghcr.io/google/osv-scanner@sha256:4d3d1a42ba435ac706286fec518c044f049c9753d21260b5bae60bab8740ed97
+          OSV_SCANNER_IMAGE: ghcr.io/google/osv-scanner@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0 # v2.7.0
         run: |
           set -uo pipefail
           exit_code=0

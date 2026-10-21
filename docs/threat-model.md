@@ -40,8 +40,9 @@ build platform.
 | Confused deputy | A caller publishes the wrong artifact or targets an attacker-controlled service. | Validate artifact names, identifiers, HTTPS endpoints, image digests, and registry ownership before privileged operations. |
 
 Workflow changes are statically analyzed by both `actionlint` and Zizmor. Zizmor runs in blocking console mode with
-the regular persona, online audits, and no severity suppression. Any reported actionable finding fails the pull-request
-check.
+the regular persona and online audits. Any reported actionable finding fails the pull-request check. Consumers may
+configure `unpinned-uses` to permit the organization-managed `shiftleftcyber/supply-chain-workflows@v1` channel; all
+other external actions and workflows remain subject to full-SHA pinning.
 
 Reusable workflow permissions can only be maintained or reduced across the caller and callee chain. Workflows that
 upload SARIF declare `security-events: write` at the reusable-workflow boundary, then explicitly remove it from jobs

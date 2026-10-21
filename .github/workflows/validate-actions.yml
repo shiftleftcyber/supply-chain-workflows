@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Enforce immutable action references and narrow authority
+      - name: Enforce reviewed action references and narrow authority
         shell: bash
         run: |
           set -euo pipefail
@@ -32,6 +32,9 @@ jobs:
               reference="${reference//\'/}"
               reference="${reference//[[:space:]]/}"
               [[ "${reference}" == ./* ]] && continue
+              if [[ "${reference}" == shiftleftcyber/supply-chain-workflows/.github/workflows/*@v1 ]]; then
+                continue
+              fi
               if [[ ! "${reference}" =~ @([a-f0-9]{40})$ ]]; then
                 echo "Unpinned external action in ${workflow}: ${reference}"
                 failed=true
