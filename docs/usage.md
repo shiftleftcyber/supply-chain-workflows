@@ -91,11 +91,12 @@ jobs:
     uses: shiftleftcyber/supply-chain-workflows/.github/workflows/scan-sbom-osv.yml@FULL_COMMIT_SHA
     with:
       artifact-name: ${{ needs.source-sbom.outputs.artifact-name }}
-      sbom-file: ${{ needs.source-sbom.outputs.signed-sbom-file }}
+      sbom-file: example-${{ github.sha }}.source.cdx.json
 ```
 
-The scanner makes a byte-identical temporary copy named `bom.json` because OSV Scanner v2 detects CycloneDX input by
-filename. It verifies the copy before scanning and uploads only the scan report as a separate artifact.
+Scan the unsigned CycloneDX document from the evidence artifact. The signed file is an evidence envelope rather than a
+CycloneDX document and is intentionally rejected. The scanner makes a byte-identical temporary copy named `bom.json`
+because OSV Scanner v2 detects CycloneDX input by filename, verifies the copy, and uploads only the scan report.
 
 ## Build, attest, and sign a GAR image
 
@@ -129,6 +130,10 @@ jobs:
 
 The Google trust policy should constrain the repository, organization, ref, and reusable workflow identity. Do not use
 one unrestricted service account across the organization.
+
+Private repositories outside GitHub Enterprise Cloud cannot persist GitHub Artifact Attestations. Keep BuildKit SLSA
+provenance and Cosign enabled, set `github-attestation-enabled: false` on both the build and verification calls, and set
+`buildkit-provenance-enabled: true` on verification. The provenance remains attached to the OCI image in the registry.
 
 ## Verify before deployment
 

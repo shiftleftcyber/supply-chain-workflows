@@ -40,6 +40,16 @@ on:
         required: false
         type: boolean
         default: true
+      github-attestation-enabled:
+        description: Verify provenance through GitHub Artifact Attestations.
+        required: false
+        type: boolean
+        default: true
+      buildkit-provenance-enabled:
+        description: Verify registry-attached BuildKit SLSA provenance.
+        required: false
+        type: boolean
+        default: false
       certificate-identity-regexp:
         description: Required Cosign certificate identity policy when Cosign verification is enabled.
         required: false
@@ -138,6 +148,7 @@ jobs:
           password: ${{ steps.google-auth.outputs.access_token }}
 
       - name: Verify SLSA provenance
+        if: inputs.github-attestation-enabled
         shell: bash
         env:
           ATTESTATION_REPOSITORY: ${{ inputs.attestation-repository }}
@@ -149,6 +160,20 @@ jobs:
           gh attestation verify "oci://${IMAGE_REF}" \
             --repo "${ATTESTATION_REPOSITORY}" \
             --signer-workflow "${SIGNER_WORKFLOW}"
+
+      - name: Verify registry-attached BuildKit SLSA provenance
+        if: inputs.buildkit-provenance-enabled
+        shell: bash
+        env:
+          IMAGE_REF: ${{ inputs.image-ref }}
+        run: |
+          set -euo pipefail
+          provenance="$(docker buildx imagetools inspect "${IMAGE_REF}" --format '{{ json .Provenance.SLSA }}')"
+          jq -e '
+            . != null and
+            .buildType == "https://mobyproject.org/buildkit@v1" and
+            (.materials | type == "array" and length > 0)
+          ' <<< "${provenance}" >/dev/null
 
       - name: Install Cosign
         if: inputs.cosign-enabled
@@ -173,6 +198,8 @@ jobs:
       - name: Add verification summary
         shell: bash
         env:
+          BUILDKIT_PROVENANCE_ENABLED: ${{ inputs.buildkit-provenance-enabled }}
+          GITHUB_ATTESTATION_ENABLED: ${{ inputs.github-attestation-enabled }}
           IMAGE_REF: ${{ inputs.image-ref }}
           SIGNER_WORKFLOW: ${{ inputs.signer-workflow }}
         run: |
@@ -180,5 +207,7 @@ jobs:
             echo "### Container evidence verified"
             echo "- Image: \`${IMAGE_REF}\`"
             echo "- Signer workflow: \`${SIGNER_WORKFLOW}\`"
+            echo "- BuildKit SLSA provenance: \`${BUILDKIT_PROVENANCE_ENABLED}\`"
+            echo "- GitHub attestation record: \`${GITHUB_ATTESTATION_ENABLED}\`"
             echo "- Cosign required: \`${{ inputs.cosign-enabled }}\`"
           } >> "${GITHUB_STEP_SUMMARY}"

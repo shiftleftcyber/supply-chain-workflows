@@ -44,7 +44,12 @@ on:
         required: true
         type: string
       provenance-enabled:
-        description: Generate GitHub SLSA build provenance.
+        description: Generate BuildKit SLSA provenance and attach it to the pushed image.
+        required: false
+        type: boolean
+        default: true
+      github-attestation-enabled:
+        description: Also persist provenance with GitHub Artifact Attestations. Private repositories require GitHub Enterprise Cloud.
         required: false
         type: boolean
         default: true
@@ -192,11 +197,11 @@ jobs:
           build-args: ${{ inputs.build-args }}
           tags: ${{ inputs.tags }}
           push: true
-          provenance: false
+          provenance: ${{ inputs.provenance-enabled && 'mode=max' || 'false' }}
 
       - name: Generate SLSA build provenance
         id: attest
-        if: inputs.provenance-enabled
+        if: inputs.provenance-enabled && inputs.github-attestation-enabled
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ${{ steps.metadata.outputs.subject-name }}
@@ -230,12 +235,15 @@ jobs:
       - name: Add build summary
         shell: bash
         env:
+          GITHUB_ATTESTATION_ENABLED: ${{ inputs.github-attestation-enabled }}
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          PROVENANCE_ENABLED: ${{ inputs.provenance-enabled }}
           SUBJECT_NAME: ${{ steps.metadata.outputs.subject-name }}
         run: |
           {
             echo "### Trusted container build"
             echo "- Image: \`${SUBJECT_NAME}@${IMAGE_DIGEST}\`"
-            echo "- SLSA provenance: \`${{ inputs.provenance-enabled }}\`"
+            echo "- BuildKit SLSA provenance: \`${PROVENANCE_ENABLED}\`"
+            echo "- GitHub attestation record: \`${GITHUB_ATTESTATION_ENABLED}\`"
             echo "- Cosign signature: \`${{ inputs.cosign-enabled }}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
