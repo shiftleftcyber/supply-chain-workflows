@@ -7,6 +7,8 @@ or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
+- Make OSV findings non-blocking by default while still failing on scanner, input, and report-generation errors.
+- Publish OSV JSON, HTML, and SARIF reports with a GitHub Actions summary and warning annotation.
 - Correct the default Cosign certificate identity policy to match the reusable container-build workflow identity.
 - Remove dormant attestation steps and their static `attestations: write` requirement from container builds. Retain
   deprecated inputs as fail-closed compatibility guards until a separate attestation workflow is introduced.
