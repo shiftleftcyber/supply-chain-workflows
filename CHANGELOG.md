@@ -7,6 +7,8 @@ or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
+- Remove dormant attestation steps and their static `attestations: write` requirement from container builds. Retain
+  deprecated inputs as fail-closed compatibility guards until a separate attestation workflow is introduced.
 - Make container attestations opt-in, disable BuildKit-native provenance, and use GitHub Artifact Attestations as the
   only provenance generator when explicitly enabled.
 - Separate registry-attached BuildKit SLSA provenance from optional GitHub Artifact Attestations so private

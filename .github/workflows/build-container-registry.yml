@@ -1,4 +1,4 @@
-name: Build, Attest, and Sign Registry Container
+name: Build and Sign Registry Container
 
 on:
   workflow_call:
@@ -35,7 +35,7 @@ on:
         type: string
         default: linux/amd64
       provenance-enabled:
-        description: Generate GitHub build provenance.
+        description: Deprecated compatibility input. Container attestation generation is currently unavailable.
         required: false
         type: boolean
         default: false
@@ -61,7 +61,6 @@ on:
         value: ${{ jobs.build.outputs.image-ref }}
 
 permissions:
-  attestations: write
   contents: read
   id-token: write
   packages: write
@@ -73,7 +72,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      attestations: write
       contents: read
       id-token: write
       packages: write
@@ -90,6 +88,7 @@ jobs:
           DOCKERFILE: ${{ inputs.dockerfile }}
           IMAGE_NAME: ${{ inputs.image-name }}
           IMAGE_TAGS: ${{ inputs.tags }}
+          PROVENANCE_ENABLED: ${{ inputs.provenance-enabled }}
           REGISTRY: ${{ inputs.registry }}
           REGISTRY_USERNAME: ${{ inputs.registry-username }}
         run: |
@@ -114,6 +113,10 @@ jobs:
           done
           if [[ -z "${CERTIFICATE_IDENTITY_REGEXP}" || "${CERTIFICATE_IDENTITY_REGEXP}" == *$'\n'* ]]; then
             echo "An explicit single-line certificate identity policy is required."
+            exit 1
+          fi
+          if [[ "${PROVENANCE_ENABLED}" == "true" ]]; then
+            echo "Container attestation generation is currently unavailable. Keep provenance-enabled false."
             exit 1
           fi
           subject_name="${REGISTRY}/${IMAGE_NAME}"
@@ -159,14 +162,6 @@ jobs:
           provenance: false
           push: true
           tags: ${{ inputs.tags }}
-
-      - name: Generate build provenance
-        if: inputs.provenance-enabled
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
-        with:
-          create-storage-record: false
-          subject-digest: ${{ steps.build.outputs.digest }}
-          subject-name: ${{ steps.metadata.outputs.subject-name }}
 
       - name: Install Cosign
         if: inputs.cosign-enabled
