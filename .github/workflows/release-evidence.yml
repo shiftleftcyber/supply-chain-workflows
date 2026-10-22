@@ -1,0 +1,189 @@
+name: Publish Evidence Release
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        description: Existing draft release tag to validate and publish.
+        required: true
+        type: string
+      expected-sha:
+        description: Full Git commit SHA that the release tag must resolve to.
+        required: true
+        type: string
+      evidence-artifact-name:
+        description: Workflow artifact containing flat release evidence and release-manifest.json.
+        required: true
+        type: string
+      make-latest:
+        description: Mark the published release as the latest release.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release:
+    name: Validate and publish evidence release
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.evidence-artifact-name }}
+          EXPECTED_SHA: ${{ inputs.expected-sha }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be SemVer-compatible and start with v." >&2
+            exit 1
+          fi
+          if [[ ! "${EXPECTED_SHA}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Expected SHA must be a full lowercase Git commit SHA." >&2
+            exit 1
+          fi
+          if [[ ! "${ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]]; then
+            echo "Evidence artifact name is invalid." >&2
+            exit 1
+          fi
+
+      - name: Check out release source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Validate release tag and draft
+        id: release
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected-sha }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          set -euo pipefail
+          tag_sha="$(git rev-list -n 1 -- "${RELEASE_TAG}" 2>/dev/null || true)"
+          if [[ "${tag_sha}" != "${EXPECTED_SHA}" ]]; then
+            echo "Release tag resolves to ${tag_sha:-nothing}, not ${EXPECTED_SHA}." >&2
+            exit 1
+          fi
+
+          releases="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            | jq -s --arg tag "${RELEASE_TAG}" '[.[][] | select(.tag_name == $tag)]')"
+          if [[ "$(jq 'length' <<< "${releases}")" != "1" ]]; then
+            echo "Exactly one GitHub release must exist for ${RELEASE_TAG}." >&2
+            exit 1
+          fi
+
+          release_id="$(jq -r '.[0].id' <<< "${releases}")"
+          draft="$(jq -r '.[0].draft' <<< "${releases}")"
+          if [[ ! "${release_id}" =~ ^[0-9]+$ ]] || [[ "${draft}" != "true" && "${draft}" != "false" ]]; then
+            echo "GitHub returned invalid release metadata." >&2
+            exit 1
+          fi
+          echo "release-id=${release_id}" >> "${GITHUB_OUTPUT}"
+          echo "state=$([[ "${draft}" == "true" ]] && echo draft || echo published)" >> "${GITHUB_OUTPUT}"
+
+      - name: Download release evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.evidence-artifact-name }}
+          path: evidence
+
+      - name: Validate and checksum release evidence
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected-sha }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          set -euo pipefail
+          if find evidence -mindepth 1 \( -type d -o -type l \) -print -quit | grep -q .; then
+            echo "Release evidence must contain only regular files in its root." >&2
+            exit 1
+          fi
+
+          mapfile -d '' files < <(find evidence -mindepth 1 -maxdepth 1 -type f -print0 | sort -z)
+          if (( ${#files[@]} == 0 || ${#files[@]} > 50 )); then
+            echo "Release evidence must contain between 1 and 50 files." >&2
+            exit 1
+          fi
+          for path in "${files[@]}"; do
+            name="${path#evidence/}"
+            if [[ ! "${name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || [[ ! -s "${path}" ]]; then
+              echo "Release evidence contains an invalid or empty file." >&2
+              exit 1
+            fi
+            if [[ "${name}" == "SHA256SUMS.txt" ]]; then
+              echo "SHA256SUMS.txt is reserved for the release workflow." >&2
+              exit 1
+            fi
+          done
+
+          if ! jq -e --arg tag "${RELEASE_TAG}" --arg sha "${EXPECTED_SHA}" \
+            '.release.tag == $tag and .release.commit == $sha' \
+            evidence/release-manifest.json >/dev/null; then
+            echo "release-manifest.json does not bind the evidence to the expected tag and commit." >&2
+            exit 1
+          fi
+
+          (
+            cd evidence
+            find . -mindepth 1 -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 \
+              | sort -z \
+              | xargs -0 sha256sum
+          ) > evidence/SHA256SUMS.txt
+
+      - name: Publish or verify release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAKE_LATEST: ${{ inputs.make-latest }}
+          RELEASE_ID: ${{ steps.release.outputs.release-id }}
+          RELEASE_STATE: ${{ steps.release.outputs.state }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          set -euo pipefail
+          if [[ "${RELEASE_STATE}" == "draft" ]]; then
+            mapfile -d '' files < <(find evidence -mindepth 1 -maxdepth 1 -type f -print0 | sort -z)
+            gh release upload "${RELEASE_TAG}" "${files[@]}" --clobber
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+              -F draft=false \
+              -f make_latest="${MAKE_LATEST}" >/dev/null
+          elif [[ "${RELEASE_STATE}" == "published" ]]; then
+            mkdir existing
+            while IFS= read -r expected_file; do
+              gh release download "${RELEASE_TAG}" --pattern "${expected_file}" --dir existing
+            done < <(find evidence -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | sort)
+            while IFS= read -r expected_file; do
+              cmp --silent "evidence/${expected_file}" "existing/${expected_file}" || {
+                echo "Published release asset differs from current evidence: ${expected_file}" >&2
+                exit 1
+              }
+            done < <(find evidence -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | sort)
+          else
+            echo "Unexpected release state." >&2
+            exit 1
+          fi
+
+      - name: Add release summary
+        shell: bash
+        env:
+          RELEASE_STATE: ${{ steps.release.outputs.state }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          {
+            echo "### Evidence release"
+            echo "- Tag: \`${RELEASE_TAG}\`"
+            echo "- Previous state: \`${RELEASE_STATE}\`"
+            echo "- Evidence checksums: \`SHA256SUMS.txt\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

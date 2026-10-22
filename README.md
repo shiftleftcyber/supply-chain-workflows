@@ -16,6 +16,7 @@ arbitrary shell commands or inheriting all caller secrets.
 | `verify-container.yml` | Verify GitHub build provenance and an optional Cosign keyless signature for a digest-qualified OCI image, optionally through a protected environment. |
 | `release-go.yml` | Build and publish a tagged Go release, attest its checksums, optionally attach evidence, and update its major tag. |
 | `release-github-action.yml` | Publish a GitHub Action release and optionally update its major compatibility tag. |
+| `release-evidence.yml` | Validate an existing draft release, attach checksummed evidence, and publish it after upstream gates pass. |
 | `sbom-lifecycle.yml` | Generate source and container CycloneDX SBOMs, sign and verify them with SecureSBOM, and publish them as a workflow artifact. |
 | `source-sbom-go.yml` | Generate, sign, and verify a Go source SBOM without requiring a container registry. |
 | `scan-sbom-osv.yml` | Scan an SBOM artifact with OSV Scanner and publish the JSON report. |
