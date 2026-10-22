@@ -72,12 +72,6 @@ jobs:
           RELEASE_TAG: ${{ inputs.release-tag }}
         run: |
           set -euo pipefail
-          tag_sha="$(git rev-list -n 1 -- "${RELEASE_TAG}" 2>/dev/null || true)"
-          if [[ "${tag_sha}" != "${EXPECTED_SHA}" ]]; then
-            echo "Release tag resolves to ${tag_sha:-nothing}, not ${EXPECTED_SHA}." >&2
-            exit 1
-          fi
-
           releases="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
             | jq -s --arg tag "${RELEASE_TAG}" '[.[][] | select(.tag_name == $tag)]')"
           if [[ "$(jq 'length' <<< "${releases}")" != "1" ]]; then
@@ -89,6 +83,19 @@ jobs:
           draft="$(jq -r '.[0].draft' <<< "${releases}")"
           if [[ ! "${release_id}" =~ ^[0-9]+$ ]] || [[ "${draft}" != "true" && "${draft}" != "false" ]]; then
             echo "GitHub returned invalid release metadata." >&2
+            exit 1
+          fi
+
+          tag_sha="$(git rev-list -n 1 -- "${RELEASE_TAG}" 2>/dev/null || true)"
+          if [[ -z "${tag_sha}" && "${draft}" == "true" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/tags/${RELEASE_TAG}" \
+              -f "sha=${EXPECTED_SHA}" >/dev/null
+            git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            tag_sha="$(git rev-list -n 1 -- "${RELEASE_TAG}" 2>/dev/null || true)"
+          fi
+          if [[ "${tag_sha}" != "${EXPECTED_SHA}" ]]; then
+            echo "Release tag resolves to ${tag_sha:-nothing}, not ${EXPECTED_SHA}." >&2
             exit 1
           fi
           echo "release-id=${release_id}" >> "${GITHUB_OUTPUT}"
