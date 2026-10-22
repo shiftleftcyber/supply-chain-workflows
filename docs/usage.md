@@ -234,6 +234,33 @@ jobs:
 Repository-specific code generation must happen in a separate local job. These lint workflows intentionally do not
 accept arbitrary setup commands.
 
+## Publish a checksummed evidence release
+
+Use a caller job to assemble the exact SBOMs, vulnerability reports, deployment manifest, and other evidence into one
+flat workflow artifact. After build, deployment, and post-deploy gates succeed, publish an existing draft release:
+
+```yaml
+jobs:
+  release:
+    needs: [post-deploy, evidence]
+    permissions:
+      actions: read
+      contents: write
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/release-evidence.yml@FULL_COMMIT_SHA
+    with:
+      release-tag: ${{ inputs.release-tag }}
+      expected-sha: ${{ github.sha }}
+      evidence-artifact-name: release-evidence
+      make-latest: true
+```
+
+The artifact must contain only non-empty files in its root and must include `release-manifest.json` with
+`release.tag` and `release.commit` fields matching the inputs. The workflow verifies an existing tag or creates a
+missing tag at the expected commit only for a draft release, generates
+`SHA256SUMS.txt`, uploads all evidence, and publishes the draft. An already published release is accepted only when all
+assets are byte-identical, making safe reruns possible without accepting drift. Use GoReleaser instead when the product
+actually distributes compiled Go binaries or archives.
+
 ## Publish a Go release
 
 ```yaml
