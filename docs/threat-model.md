@@ -57,8 +57,9 @@ The Go release workflow accepts only a validated artifact name and a single base
 earlier in the same workflow run. It rejects paths and empty files, uploads only after GoReleaser and provenance
 generation succeed, and moves a validated major tag only after all release evidence has been published.
 
-The evidence release workflow requires one existing release for an exact semantic-version tag, verifies that the tag
-resolves to the caller-supplied commit, and accepts only a flat artifact of validated non-empty files. A manifest binds
+The evidence release workflow requires one existing release for an exact semantic-version tag. It verifies an existing
+tag or creates a missing tag at the caller-supplied commit only while the release is still a draft, and accepts only a
+flat artifact of validated non-empty files. A manifest binds
 the evidence to the tag and commit, and the workflow generates checksums before attaching assets. It publishes only an
 existing draft after every upload succeeds. Reruns against an already published release succeed only when every release
 asset is byte-identical to the regenerated evidence.

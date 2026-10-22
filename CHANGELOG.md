@@ -7,8 +7,8 @@ or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
-- Add an idempotent evidence-release workflow that checksums a validated artifact bundle and publishes an existing
-  draft only after caller-controlled deployment gates pass.
+- Add an idempotent evidence-release workflow that checksums a validated artifact bundle, creates a missing release tag
+  at the expected commit, and publishes an existing draft only after caller-controlled deployment gates pass.
 - Make OSV findings non-blocking by default while still failing on scanner, input, and report-generation errors.
 - Publish OSV JSON, HTML, and SARIF reports with a GitHub Actions summary and warning annotation.
 - Correct the default Cosign certificate identity policy to match the reusable container-build workflow identity.

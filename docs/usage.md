@@ -255,7 +255,8 @@ jobs:
 ```
 
 The artifact must contain only non-empty files in its root and must include `release-manifest.json` with
-`release.tag` and `release.commit` fields matching the inputs. The workflow verifies the tag, generates
+`release.tag` and `release.commit` fields matching the inputs. The workflow verifies an existing tag or creates a
+missing tag at the expected commit only for a draft release, generates
 `SHA256SUMS.txt`, uploads all evidence, and publishes the draft. An already published release is accepted only when all
 assets are byte-identical, making safe reruns possible without accepting drift. Use GoReleaser instead when the product
 actually distributes compiled Go binaries or archives.
