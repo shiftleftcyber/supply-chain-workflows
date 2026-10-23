@@ -86,13 +86,13 @@ jobs:
             exit 1
           fi
 
-          tag_sha="$(git rev-list -n 1 -- "${RELEASE_TAG}" 2>/dev/null || true)"
+          tag_sha="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}" 2>/dev/null || true)"
           if [[ -z "${tag_sha}" && "${draft}" == "true" ]]; then
             gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
               -f "ref=refs/tags/${RELEASE_TAG}" \
               -f "sha=${EXPECTED_SHA}" >/dev/null
             git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
-            tag_sha="$(git rev-list -n 1 -- "${RELEASE_TAG}" 2>/dev/null || true)"
+            tag_sha="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}" 2>/dev/null || true)"
           fi
           if [[ "${tag_sha}" != "${EXPECTED_SHA}" ]]; then
             echo "Release tag resolves to ${tag_sha:-nothing}, not ${EXPECTED_SHA}." >&2

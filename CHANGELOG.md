@@ -7,6 +7,7 @@ or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
+- Correct evidence-release tag resolution so an existing tag is verified instead of being mistaken for a path and recreated.
 - Add an idempotent evidence-release workflow that checksums a validated artifact bundle, creates a missing release tag
   at the expected commit, and publishes an existing draft only after caller-controlled deployment gates pass.
 - Make OSV findings non-blocking by default while still failing on scanner, input, and report-generation errors.
