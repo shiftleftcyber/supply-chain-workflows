@@ -7,6 +7,7 @@ or pin a selected release to its full commit SHA.
 
 ## Unreleased
 
+- Expose the unsigned Go source SBOM filename for scanners while retaining the signed evidence output.
 - Correct evidence-release tag resolution so an existing tag is verified instead of being mistaken for a path and recreated.
 - Add an idempotent evidence-release workflow that checksums a validated artifact bundle, creates a missing release tag
   at the expected commit, and publishes an existing draft only after caller-controlled deployment gates pass.

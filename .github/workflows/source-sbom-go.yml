@@ -52,6 +52,9 @@ on:
       signed-sbom-file:
         description: Signed source SBOM filename.
         value: ${{ jobs.sbom.outputs.signed-sbom-file }}
+      unsigned-sbom-file:
+        description: Unsigned CycloneDX source SBOM filename for vulnerability scanners.
+        value: ${{ jobs.sbom.outputs.unsigned-sbom-file }}
 
 permissions:
   contents: read
@@ -67,6 +70,7 @@ jobs:
     outputs:
       artifact-name: ${{ inputs.artifact-name }}
       signed-sbom-file: ${{ steps.files.outputs.signed }}
+      unsigned-sbom-file: ${{ steps.files.outputs.unsigned }}
     steps:
       - name: Validate inputs
         id: files
