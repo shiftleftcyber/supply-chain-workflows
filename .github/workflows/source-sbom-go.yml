@@ -49,6 +49,9 @@ on:
       artifact-name:
         description: Uploaded evidence artifact.
         value: ${{ jobs.sbom.outputs.artifact-name }}
+      component-count:
+        description: Number of dependency components in the unsigned CycloneDX SBOM.
+        value: ${{ jobs.sbom.outputs.component-count }}
       signed-sbom-file:
         description: Signed source SBOM filename.
         value: ${{ jobs.sbom.outputs.signed-sbom-file }}
@@ -69,6 +72,7 @@ jobs:
       contents: read
     outputs:
       artifact-name: ${{ inputs.artifact-name }}
+      component-count: ${{ steps.inventory.outputs.component-count }}
       signed-sbom-file: ${{ steps.files.outputs.signed }}
       unsigned-sbom-file: ${{ steps.files.outputs.unsigned }}
     steps:
@@ -143,6 +147,29 @@ jobs:
           else
             cyclonedx-gomod app -licenses -json -output-version 1.6 -output "${OUTPUT_FILE}" .
           fi
+
+      - name: Validate source SBOM inventory
+        id: inventory
+        shell: bash
+        env:
+          UNSIGNED_FILE: ${{ steps.files.outputs.unsigned }}
+        run: |
+          set -euo pipefail
+          if ! jq -e '
+            .bomFormat == "CycloneDX" and
+            (.specVersion | type == "string") and
+            (.metadata.component | type == "object") and
+            ((has("components") | not) or (.components | type == "array"))
+          ' "${UNSIGNED_FILE}" >/dev/null; then
+            echo "Generated source SBOM is not a supported CycloneDX document."
+            exit 1
+          fi
+          component_count="$(jq '(.components // []) | length' "${UNSIGNED_FILE}")"
+          if [[ ! "${component_count}" =~ ^[0-9]+$ ]]; then
+            echo "Could not determine the source SBOM component count."
+            exit 1
+          fi
+          echo "component-count=${component_count}" >> "${GITHUB_OUTPUT}"
 
       - name: Sign source SBOM
         uses: shiftleftcyber/secure-sbom-action@542dffaadd81bc0614947d749720558a399e6454 # v2.4.0
