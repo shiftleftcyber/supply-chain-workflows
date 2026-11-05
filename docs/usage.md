@@ -286,3 +286,32 @@ The caller must protect release tags and require human review. The workflow curr
 then creates provenance from its checksum manifest. Optional evidence must be a single named file from a workflow
 artifact produced earlier in the same run. The major compatibility tag moves only after the release, provenance, and
 optional evidence upload succeed. Consumers must verify provenance before trusting downloaded artifacts.
+
+For a Go product released from an existing draft, dispatch the caller from its default branch and opt into draft mode:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Existing draft release tag.
+        required: true
+        type: string
+
+jobs:
+  release:
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    uses: shiftleftcyber/supply-chain-workflows/.github/workflows/release-go.yml@FULL_COMMIT_SHA
+    with:
+      config: .goreleaser.yaml
+      release-tag: ${{ inputs.release-tag }}
+      use-existing-draft: true
+```
+
+The caller's GoReleaser configuration must set both `release.draft: true` and `release.use_existing_draft: true`. The
+workflow requires exactly one matching draft, verifies or creates the tag at the dispatched default-branch commit,
+requires GoReleaser to retain the draft while provenance and evidence are added, and then publishes it. Existing
+tag-push callers retain the original release-creation behavior by default.

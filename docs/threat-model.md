@@ -54,8 +54,11 @@ Every reusable workflow boundary therefore declares only the union of its jobs' 
 such as `read-all` are prohibited because they force least-privilege callers to grant unrelated repository access.
 
 The Go release workflow accepts only a validated artifact name and a single basename when attaching evidence produced
-earlier in the same workflow run. It rejects paths and empty files, uploads only after GoReleaser and provenance
-generation succeed, and moves a validated major tag only after all release evidence has been published.
+earlier in the same workflow run. Its default tag-push mode remains backward compatible. Its opt-in draft mode runs
+only through a default-branch manual dispatch, requires exactly one existing draft release, and verifies or creates its
+semantic-version tag at the dispatched commit. It rejects paths and empty files, uploads only after GoReleaser and
+provenance generation succeed, confirms the release was published, and moves a validated major tag only after all
+release evidence has been published.
 
 The evidence release workflow requires one existing release for an exact semantic-version tag. It verifies an existing
 tag or creates a missing tag at the caller-supplied commit only while the release is still a draft, and accepts only a

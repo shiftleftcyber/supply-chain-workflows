@@ -38,6 +38,16 @@ on:
         required: false
         type: boolean
         default: false
+      use-existing-draft:
+        description: Finalize an existing draft release during a default-branch workflow dispatch.
+        required: false
+        type: boolean
+        default: false
+      release-tag:
+        description: Existing draft release tag. Required when use-existing-draft is true.
+        required: false
+        type: string
+        default: ''
 
 # Preserve the maximum scopes authorized by the caller; the release job
 # explicitly declares the same release-only scopes below.
@@ -49,7 +59,7 @@ permissions:
 jobs:
   release:
     name: Publish Go release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.use-existing-draft
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -57,15 +67,26 @@ jobs:
       contents: write
       id-token: write
     steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
       - name: Validate inputs and tag
         id: validate
         shell: bash
         env:
           CHECKSUM_FILE: ${{ inputs.checksum-file }}
           CONFIG: ${{ inputs.config }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           EVIDENCE_ARTIFACT_NAME: ${{ inputs.evidence-artifact-name }}
           EVIDENCE_FILE: ${{ inputs.evidence-file }}
           GO_VERSION_FILE: ${{ inputs.go-version-file }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          USE_EXISTING_DRAFT: ${{ inputs.use-existing-draft }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: |
           set -euo pipefail
@@ -80,11 +101,55 @@ jobs:
             fi
           done
 
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v([0-9]+)[.]([0-9]+)[.]([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
+          effective_tag="${GITHUB_REF_NAME}"
+          if [[ "${USE_EXISTING_DRAFT}" == "true" ]]; then
+            [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]] || {
+              echo "Draft releases must be finalized by workflow_dispatch." >&2
+              exit 1
+            }
+            [[ "${GITHUB_REF}" == "refs/heads/${DEFAULT_BRANCH}" ]] || {
+              echo "Draft releases must be finalized from the default branch." >&2
+              exit 1
+            }
+            effective_tag="${RELEASE_TAG}"
+            [[ "${effective_tag}" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || {
+              echo "Release tag must be SemVer-compatible and start with v." >&2
+              exit 1
+            }
+
+            releases="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              | jq -s --arg tag "${effective_tag}" '[.[][] | select(.tag_name == $tag)]')"
+            if [[ "$(jq 'length' <<< "${releases}")" != "1" ]] \
+              || [[ "$(jq -r '.[0].draft' <<< "${releases}")" != "true" ]]; then
+              echo "Exactly one draft GitHub release must exist for ${effective_tag}." >&2
+              exit 1
+            fi
+            echo "release-id=$(jq -r '.[0].id' <<< "${releases}")" >> "${GITHUB_OUTPUT}"
+
+            tag_sha="$(git rev-parse --verify "refs/tags/${effective_tag}^{commit}" 2>/dev/null || true)"
+            if [[ -n "${tag_sha}" && "${tag_sha}" != "${GITHUB_SHA}" ]]; then
+              echo "${effective_tag} resolves to ${tag_sha}, not ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+            if [[ -z "${tag_sha}" ]]; then
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+                -f "ref=refs/tags/${effective_tag}" \
+                -f "sha=${GITHUB_SHA}" >/dev/null
+              git fetch --force origin "refs/tags/${effective_tag}:refs/tags/${effective_tag}"
+            fi
+          elif [[ -n "${RELEASE_TAG}" ]]; then
+            echo "release-tag requires use-existing-draft." >&2
+            exit 1
+          fi
+
+          if [[ ! "${effective_tag}" =~ ^v([0-9]+)[.]([0-9]+)[.]([0-9]+)([-+][0-9A-Za-z.-]+)?$ ]]; then
             echo "Release tag must be SemVer-compatible and start with v."
             exit 1
           fi
-          echo "major=v${BASH_REMATCH[1]}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "major=v${BASH_REMATCH[1]}"
+            echo "release-tag=${effective_tag}"
+          } >> "${GITHUB_OUTPUT}"
 
           if [[ -n "${EVIDENCE_ARTIFACT_NAME}" || -n "${EVIDENCE_FILE}" ]]; then
             if [[ ! "${EVIDENCE_ARTIFACT_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] \
@@ -93,13 +158,6 @@ jobs:
               exit 1
             fi
           fi
-
-      - name: Check out source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -115,6 +173,7 @@ jobs:
           args: release --clean --config ${{ inputs.config }}
           workdir: ${{ inputs.working-directory }}
         env:
+          GORELEASER_CURRENT_TAG: ${{ steps.validate.outputs.release-tag }}
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Confirm checksum manifest exists
@@ -128,6 +187,21 @@ jobs:
             echo "GoReleaser did not produce the expected checksum manifest: ${CHECKSUM_FILE}"
             exit 1
           fi
+
+      - name: Confirm GoReleaser retained the draft
+        if: inputs.use-existing-draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.validate.outputs.release-id }}
+        run: |
+          set -euo pipefail
+          draft="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.draft')"
+          [[ "${draft}" == "true" ]] || {
+            echo "GoReleaser published the draft before provenance and evidence completed." >&2
+            echo "Set release.draft and release.use_existing_draft to true in the GoReleaser configuration." >&2
+            exit 1
+          }
 
       - name: Generate build provenance for release artifacts
         id: attest
@@ -149,13 +223,38 @@ jobs:
           EVIDENCE_FILE: ${{ inputs.evidence-file }}
           EVIDENCE_PATH: ${{ runner.temp }}/release-evidence/${{ inputs.evidence-file }}
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.validate.outputs.release-tag }}
         run: |
           set -euo pipefail
           if [[ ! -s "${EVIDENCE_PATH}" ]]; then
             echo "Release evidence is missing or empty: ${EVIDENCE_FILE}"
             exit 1
           fi
-          gh release upload "${GITHUB_REF_NAME}" "${EVIDENCE_PATH}" --clobber
+          gh release upload "${RELEASE_TAG}" "${EVIDENCE_PATH}" --clobber
+
+      - name: Publish validated draft
+        if: inputs.use-existing-draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.validate.outputs.release-id }}
+        run: |
+          set -euo pipefail
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false >/dev/null
+
+      - name: Confirm release is published
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.validate.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+          draft="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.draft')"
+          [[ "${draft}" == "false" ]] || {
+            echo "GoReleaser did not publish ${RELEASE_TAG}." >&2
+            exit 1
+          }
 
       - name: Move major compatibility tag
         if: inputs.update-major-tag
@@ -163,27 +262,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MAJOR_TAG: ${{ steps.validate.outputs.major }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
             gh api --method PATCH \
               "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" \
-              -f sha="${GITHUB_SHA}" \
+              -f sha="${RELEASE_SHA}" \
               -F force=true >/dev/null
           else
             gh api --method POST \
               "repos/${GITHUB_REPOSITORY}/git/refs" \
               -f ref="refs/tags/${MAJOR_TAG}" \
-              -f sha="${GITHUB_SHA}" >/dev/null
+              -f sha="${RELEASE_SHA}" >/dev/null
           fi
 
       - name: Add release summary
         shell: bash
         env:
           ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          RELEASE_TAG: ${{ steps.validate.outputs.release-tag }}
         run: |
           {
             echo "### Go release published and attested"
-            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+            echo "- Tag: \`${RELEASE_TAG}\`"
             echo "- Attestation: ${ATTESTATION_URL}"
           } >> "${GITHUB_STEP_SUMMARY}"
