@@ -101,7 +101,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up ReARM CLI
-        uses: relizaio/rearm-actions/setup-cli@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+        uses: relizaio/rearm-actions/setup-cli@441a3590e8df05dd0836703602995b04ad2701b1 # 1.9.0
 
       - name: Calculate source digest
         id: source
@@ -117,7 +117,7 @@ jobs:
 
       - name: Initialize ReARM flow
         id: initialize
-        uses: relizaio/rearm-actions/initialize@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+        uses: relizaio/rearm-actions/initialize@441a3590e8df05dd0836703602995b04ad2701b1 # 1.9.0
         with:
           allow_rebuild: true
           component: ${{ inputs.component-id }}
@@ -128,7 +128,7 @@ jobs:
 
       - name: Generate and sign SBOM
         id: sbom
-        uses: relizaio/rearm-actions/sbom-sign-scan@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+        uses: relizaio/rearm-actions/sbom-sign-scan@441a3590e8df05dd0836703602995b04ad2701b1 # 1.9.0
         with:
           deliverable_type: FILE
           enable_sbom: true
@@ -160,7 +160,7 @@ jobs:
           path: fs.cdx.bom.json
 
       - name: Finalize ReARM flow
-        uses: relizaio/rearm-actions/finalize@042ecc05633174c505ffe30ced465bf6b62bff3b # 1.8.0
+        uses: relizaio/rearm-actions/finalize@441a3590e8df05dd0836703602995b04ad2701b1 # 1.9.0
         with:
           commit_list: ${{ steps.initialize.outputs.commit_list }}
           component: ${{ inputs.component-id }}
