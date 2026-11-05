@@ -76,6 +76,10 @@ generation failures remain terminal. Callers may explicitly enable blocking vuln
 scanner container has a read-only root filesystem, read-only SBOM input, and write access only to its report directory.
 OSV queries necessarily disclose package coordinates from the SBOM to the OSV service. SARIF upload is excluded from
 the baseline workflow because private repositories require GitHub Code Security and an additional write permission.
+Valid CycloneDX documents can describe only their root through `metadata.component` and omit the dependency
+`components` array. For that explicit zero-dependency case, the workflow does not invoke OSV, which otherwise exits
+with an operational error because it has no package source. It emits valid empty JSON, HTML, and SARIF reports and
+states the skipped scan in the job summary. Signed CycloneDX documents remain evidence inputs, not scanner inputs.
 
 ## Known limitations
 

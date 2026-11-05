@@ -67,6 +67,7 @@ jobs:
           path: input
 
       - name: Prepare OSV-compatible SBOM name
+        id: prepare
         shell: bash
         env:
           SBOM_FILE: ${{ inputs.sbom-file }}
@@ -80,10 +81,22 @@ jobs:
           if ! jq -e '
             .bomFormat == "CycloneDX" and
             (.specVersion | type == "string") and
-            (.components | type == "array")
+            (.metadata.component | type == "object") and
+            ((has("components") | not) or (.components | type == "array")) and
+            (has("signature") | not)
           ' "${source_file}" >/dev/null; then
-            echo "The requested file is not an unsigned CycloneDX SBOM. Scan the *.cdx.json file, not the signed evidence envelope." >&2
+            echo "The requested file is not a supported unsigned CycloneDX SBOM." >&2
             exit 1
+          fi
+          component_count="$(jq '(.components // []) | length' "${source_file}")"
+          if [[ ! "${component_count}" =~ ^[0-9]+$ ]]; then
+            echo "Could not determine the SBOM component count."
+            exit 1
+          fi
+          if [[ "${component_count}" -eq 0 ]]; then
+            echo "has-packages=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "has-packages=true" >> "${GITHUB_OUTPUT}"
           fi
           mkdir -p osv-input report
           cp -- "${source_file}" osv-input/bom.json
@@ -96,6 +109,7 @@ jobs:
 
       - name: Scan SBOM
         id: osv
+        if: steps.prepare.outputs.has-packages == 'true'
         shell: bash
         env:
           OSV_SCANNER_IMAGE: ghcr.io/google/osv-scanner@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0 # v2.7.0
@@ -134,12 +148,35 @@ jobs:
           echo "findings=${findings}" >> "${GITHUB_OUTPUT}"
           echo "operational-error=${operational_error}" >> "${GITHUB_OUTPUT}"
 
+      - name: Create empty reports for a zero-dependency SBOM
+        if: steps.prepare.outputs.has-packages == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n '{results: []}' > report/osv-results.json
+          jq -n '{
+            version: "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            runs: [{
+              tool: {driver: {name: "OSV-Scanner", informationUri: "https://google.github.io/osv-scanner/"}},
+              results: []
+            }]
+          }' > report/osv-results.sarif
+          cat > report/osv-results.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head><meta charset="utf-8"><title>OSV vulnerability scan</title></head>
+          <body><h1>OSV vulnerability scan</h1><p>The SBOM contains no dependency components to scan.</p></body>
+          </html>
+          EOF
+
       - name: Publish scan summary
         if: always() && hashFiles('report/osv-results.json') != ''
         shell: bash
         env:
           FINDINGS: ${{ steps.osv.outputs.findings }}
           OPERATIONAL_ERROR: ${{ steps.osv.outputs.operational-error }}
+          HAS_PACKAGES: ${{ steps.prepare.outputs.has-packages }}
           REPORT_ARTIFACT_NAME: ${{ inputs.report-artifact-name }}
         run: |
           set -euo pipefail
@@ -151,7 +188,9 @@ jobs:
           {
             echo "## OSV vulnerability scan"
             echo
-            if [[ "${OPERATIONAL_ERROR}" == "true" ]]; then
+            if [[ "${HAS_PACKAGES}" == "false" ]]; then
+              echo "The SBOM contains no dependency components to scan."
+            elif [[ "${OPERATIONAL_ERROR}" == "true" ]]; then
               echo "> [!CAUTION]"
               echo "> OSV Scanner did not complete successfully. This job will fail."
             elif [[ "${FINDINGS}" == "true" ]]; then
